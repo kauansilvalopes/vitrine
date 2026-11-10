@@ -28,6 +28,12 @@
 !/THIRD-PARTY-NOTICES.md
 !/*.bat
 
+# The PS5 port (this fork): its brief, its log, and its own code
+!/PS5-PORT.md
+!/PROGRESS.md
+!/CLAUDE.md
+!/ps5/
+
 # 3. Never commit these, even inside allowed folders
 node_modules/
 dist/
