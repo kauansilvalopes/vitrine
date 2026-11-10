@@ -223,5 +223,19 @@ references `ps5/.local/ref/ref-{gc-first,gc-sel5,n3ds-sel2}.png`.
 **Open questions for the owner:** 4. The Create (⧉) button: Boxshelf uses it for Settings / hold Museum, but the
 PS5 keeps it for screenshots. Which button should open Settings? (Default until you say: touchpad click.)
 
+**Console, read-only (2026-11-10, after the owner switched it on, 192.168.2.120):** `/appdb` has 29 titles and
+**PPSA99850 is free**. `make library PS5_HOST=192.168.2.120`: 16 roots listed; GameCube 2, Wii 1, Wii U 1, Switch 8
+(one folder each), PS2 105, PS4 2, PS5 11, 3DS 5, PS1 87, DS 0, Media 10. Rules to fix (found on the real list):
+- PS2 files are often named without spaces ("2002fifaworldcup.chd"): the title must come from the disc serial
+  (PS5SX2's covers / Estante's serial cache), not the file name.
+- No-Intro writes an apostrophe as "_" ("Luigi_s Mansion"): turn "_s " into "'s ".
+- `/appdb` apps that are not games (YouTube, PC5) land on the PS5 shelf; homebrew ports (Breath of the Wild
+  PPSA90212, TLOZ Ocarina of Time 4k PPSA99620) land on Media. Boxshelf has a "Custom" shelf for PC ports / recomps
+  and Media for streaming apps — see open question 5.
+Nothing was written to the console.
+
+**Open questions for the owner:** 5. Ports/recomps (Breath of the Wild, Ocarina of Time 4k): a "Custom" shelf as in
+Boxshelf (default), or Media? And YouTube on Media (default) rather than PS5?
+
 **Next step:** owner checkpoint on the console (deploy needs his go-ahead). Then the sort/filter panel and the
 Menu, and P3 (case anatomy: real covers, spines with band and title, glare, sheen, floor strips).
