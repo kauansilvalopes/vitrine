@@ -52,7 +52,7 @@ RUNTIME_INPUTS := tools/rebuild-libc.sh tools/build-host-tools.sh tools/ninja-bu
 	$(wildcard tooling/native/*.cpp tooling/native/*.hpp) \
 	$(wildcard tooling/native/runtime/*.txt)
 
-.PHONY: all app build opengl doctor test preview libc assets-check deploy undeploy clean distclean help
+.PHONY: all app build opengl doctor test preview library library-tool libc assets-check deploy undeploy clean distclean help
 
 all: app
 build: app
@@ -63,6 +63,17 @@ doctor:
 
 test:
 	@bash tools/test-boxshelf.sh
+
+library-tool:
+	@mkdir -p build/tools
+	@clang-18 -O1 -c src/cJSON.c -o build/tools/cjson.o
+	@clang++-18 -std=c++20 -O1 -Wall -Wextra -Isrc tools/list-library.cpp src/data/*.cpp build/tools/cjson.o \
+		-o build/tools/list-library
+
+# Read-only: saves /appdb, emulator configs and folder listings from the console, then prints the shelves.
+library: library-tool
+	@python3 tools/fetch-listings.py --host $(PS5_HOST)
+	@build/tools/list-library .local/listings
 
 preview: opengl
 	@bash tools/preview-boxshelf-gl.sh $(MODES)
