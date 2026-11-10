@@ -154,6 +154,7 @@ float ShelfModel::position() const
 
 bool ShelfModel::set_cover(const std::string &game_id, const std::string &path)
 {
+    bool found = false; // every copy: a game on Home is also on its own shelf
     for (auto &s : shelves_)
         for (auto &it : s.items)
             if (it.kind == ItemKind::game && it.game.id == game_id)
@@ -163,9 +164,9 @@ bool ShelfModel::set_cover(const std::string &game_id, const std::string &path)
                     g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
                 g.cover_front = path;
                 g.cover_square = false;
-                return true;
+                found = true;
             }
-    return false;
+    return found;
 }
 
 bool ShelfModel::move_item(const std::string &game_id, data::System to)
@@ -175,6 +176,8 @@ bool ShelfModel::move_item(const std::string &game_id, data::System to)
     bool found = false;
     for (std::size_t si = 0; si < shelves_.size() && !found; ++si)
     {
+        if (shelves_[si].system == data::System::home)
+            continue; // Home holds copies; the caller builds it again
         auto &items = shelves_[si].items;
         for (std::size_t i = 0; i < items.size(); ++i)
             if (items[i].kind == ItemKind::game && items[i].game.id == game_id)
@@ -226,16 +229,50 @@ bool ShelfModel::move_item(const std::string &game_id, data::System to)
     return true;
 }
 
+void ShelfModel::set_home(std::vector<Item> items)
+{
+    const data::System viewed = shelves_.empty() ? data::System::count : cur().system;
+    const int viewed_sel = shelves_.empty() ? 0 : cur().selected;
+    const bool had = !shelves_.empty() && shelves_.front().system == data::System::home;
+    int keep_sel = had ? shelves_.front().selected : 0;
+    if (had)
+        shelves_.erase(shelves_.begin());
+    if (!items.empty())
+    {
+        Shelf home;
+        home.system = data::System::home;
+        home.game_count = static_cast<int>(items.size());
+        home.items = std::move(items);
+        home.selected = std::max(0, std::min(keep_sel, home.game_count - 1));
+        shelves_.insert(shelves_.begin(), std::move(home));
+    }
+    current_ = 0;
+    for (int i = 0; i < shelf_count(); ++i)
+        if (shelves_[static_cast<std::size_t>(i)].system == viewed)
+            current_ = i;
+    if (!shelves_.empty() && cur().system == viewed && viewed != data::System::home)
+        shelves_[static_cast<std::size_t>(current_)].selected = viewed_sel;
+}
+
+std::vector<const Item *> ShelfModel::all_games() const
+{
+    std::vector<const Item *> out;
+    for (const auto &s : shelves_)
+        if (s.system != data::System::home)
+            for (const auto &it : s.items)
+                if (it.kind == ItemKind::game)
+                    out.push_back(&it);
+    return out;
+}
+
 bool ShelfModel::set_back(const std::string &game_id, const std::string &path)
 {
+    bool found = false;
     for (auto &s : shelves_)
         for (auto &it : s.items)
             if (it.kind == ItemKind::game && it.game.id == game_id)
-            {
-                it.game.cover_back = path;
-                return true;
-            }
-    return false;
+                it.game.cover_back = path, found = true;
+    return found;
 }
 
 const Item *ShelfModel::find(const std::string &game_id) const

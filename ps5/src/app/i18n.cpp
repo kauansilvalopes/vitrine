@@ -103,6 +103,12 @@ constexpr Entry kTable[] = {
     // the quick menu
     {"Move to shelf", "Mover para a aba", "Mover a la pesta\xc3\xb1" "a"},
     {"Language", "Idioma", "Idioma"},
+    {"%s added to favorites", "%s adicionado aos favoritos", "%s a\xc3\xb1" "adido a favoritos"},
+    {"Removed %s from favorites", "%s removido dos favoritos", "%s quitado de favoritos"},
+    {"played today", "jogado hoje", "jugado hoy"},
+    {"played yesterday", "jogado ontem", "jugado ayer"},
+    {"played %s days ago", "jogado h\xc3\xa1 %s dias", "jugado hace %s d\xc3\xad" "as"},
+    {"Favorite", "Favorito", "Favorito"},
     {"Box backs", "Versos das caixas", "Reversos de las cajas"},
     {"Download", "Baixar", "Descargar"},
     {"Off", "Desligado", "Desactivado"},

@@ -95,6 +95,11 @@ class ShelfModel
     // Puts a game on another shelf (made when missing, in the shelves' order; a shelf left empty goes). The view
     // stays on the shelf it was on. False when the game is not found or is already there.
     bool move_item(const std::string &game_id, data::System to);
+    // app.js buildHome(): the Home shelf in front (recently played, then favourites), or none when empty. The view
+    // stays on the shelf it was on.
+    void set_home(std::vector<Item> items);
+    // Every game on the console shelves (not Home).
+    std::vector<const Item *> all_games() const;
 
   private:
     std::vector<Shelf> shelves_;

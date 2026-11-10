@@ -117,6 +117,7 @@ uniform vec4 u_spine;  // x: 1 on a spine face, y: the band's share of the heigh
 uniform vec4 u_band;   // the band tile in the texture: u at its left, v at its top, u at its right, v at its bottom
 uniform vec4 u_shade;  // spine film (setup.css .f-left::after): black alpha at the back, white alpha, black at the front, white stop
 uniform float u_film;  // strength of the front's ::after film (1 selected, .55 the others)
+uniform vec3 u_badge;  // x: 1 draws the favourite heart, y / z: the face's width / height in virtual pixels
 uniform vec4 u_color;
 uniform int u_textured;
 uniform float u_ambient;
@@ -126,6 +127,15 @@ uniform float u_shine;
 uniform float u_sheen;
 uniform float u_spin;
 out vec4 frag;
+float dot2(vec2 v) { return dot(v, v); }
+// Inigo Quilez's heart: the tip at (0, 0), the top near y = 1
+float heart(vec2 p)
+{
+    p.x = abs(p.x);
+    if (p.y + p.x > 1.0)
+        return sqrt(dot2(p - vec2(0.25, 0.75))) - sqrt(2.0) / 4.0;
+    return sqrt(min(dot2(p - vec2(0.0, 1.0)), dot2(p - 0.5 * max(p.x + p.y, 0.0)))) * sign(p.x - p.y);
+}
 void main()
 {
     vec2 uv = v_uv;
@@ -195,6 +205,17 @@ void main()
         float a = clamp(1.0 - abs(d) / 0.21, 0.0, 1.0); // linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent)
         c.rgb = mix(c.rgb, vec3(1.0), 0.6 * a);
     }
+    if (u_badge.x > 0.5)
+    {
+        // .slot.fav .f-front::before: right 8px, top 8px, 26px round, rgba(10,10,16,.75), a 14px heart #ff5c8a
+        vec2 px = vec2((v_face.x - 1.0) * u_badge.y + 21.0, v_face.y * u_badge.z - 21.0);
+        float aa = max(fwidth(px.x), 1e-3);
+        float disc = clamp(0.5 - (length(px) - 13.0) / aa, 0.0, 1.0);
+        c.rgb = mix(c.rgb, vec3(10.0, 10.0, 16.0) / 255.0, disc * 0.75);
+        vec2 hp = vec2(px.x, -px.y) / 11.0 + vec2(0.0, 0.52);
+        float h = clamp(0.5 - heart(hp) * 11.0 / aa, 0.0, 1.0);
+        c.rgb = mix(c.rgb, vec3(1.0, 92.0 / 255.0, 138.0 / 255.0), h);
+    }
     if (u_round.x > 0.0 && !(u_round.y > 0.5 && v_face.x < 0.5) && !(u_round.y < -0.5 && v_face.x > 0.5))
     {
         // rounded corners (style.css rc): distance outside the rounded rectangle, in face-width units
@@ -239,6 +260,7 @@ bool Gl3D::init() noexcept
     u_band_ = glGetUniformLocation(program_, "u_band");
     u_shade_ = glGetUniformLocation(program_, "u_shade");
     u_film_ = glGetUniformLocation(program_, "u_film");
+    u_badge_ = glGetUniformLocation(program_, "u_badge");
 
     std::vector<Vertex> v;
     auto quad = [&](const float p[4][3], float nx, float ny, float nz, bool reversed = false)
@@ -388,6 +410,7 @@ void Gl3D::draw_range(const Mat4 &model, int first, int count, std::uint32_t tex
     glUniform4f(u_band_, band_[0], band_[1], band_[2], band_[3]);
     glUniform4f(u_shade_, shade_[0], shade_[1], shade_[2], shade_[3]);
     glUniform1f(u_film_, film_);
+    glUniform3f(u_badge_, badge_[0], badge_[1], badge_[2]);
     if (reflect)
         glUniform2f(u_fade_, reflect->floor_y, reflect->fade_length);
     else
@@ -488,6 +511,7 @@ void Gl3D::draw(const CaseOp &op) noexcept
         round_[0] = op.corner;
         round_[1] = op.corner_side;
         film_ = op.reflection ? 0.0f : op.film;
+        badge_[0] = op.favorite && !op.reflection ? 1.0f : 0.0f, badge_[1] = w, badge_[2] = h;
         if (op.front)
             draw_range(door, box_front_, 6, op.front, kf, kf, kf, a, fade);
         else
@@ -498,6 +522,7 @@ void Gl3D::draw(const CaseOp &op) noexcept
     glare_[0] = 0.5f, glare_[1] = 0.0f, glare_[2] = 1.0f, glare_[3] = -9.0f;
     round_[0] = round_[1] = 0.0f;
     film_ = 0.0f;
+    badge_[0] = 0.0f;
     ambient_ = 0.62f;
     if (op.reflection)
         glFrontFace(GL_CCW);

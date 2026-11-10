@@ -84,6 +84,11 @@ class ShelfScreen
     void draw_made_up_back(hui::gfx::DrawList &list, const Item &item, const hui::gfx::Rect &r);
     void set_flipped(bool on, double now);
     void play(double now);
+    // app.js buildHome() / toggleFav() / homeLine(); L3: a random game on the shelf
+    void rebuild_home(double now);
+    void toggle_favorite(double now);
+    void shuffle(double now);
+    std::vector<std::string> meta_line(const Item &item) const;
 
   public:
     // The owner's saved choices (language, games moved to another shelf); the quick menu changes and saves them.

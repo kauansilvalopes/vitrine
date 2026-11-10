@@ -189,8 +189,27 @@ static void test_move()
     CHECK(m.shelf(0).items.size() == 3 && m.shelf(0).items[0].title == "Breath of the Wild" && m.shelf(0).game_count == 3);
 }
 
+static void test_home()
+{
+    // app.js buildHome(): Home goes in front when it has games, and the view stays on its shelf
+    std::vector<Shelf> shelves;
+    shelves.push_back(prepare_shelf(shelf_of(System::gc, {"A", "B", "C"}), true));
+    shelves.push_back(prepare_shelf(shelf_of(System::ps2, {"X", "Y"}), true));
+    ShelfModel m;
+    m.set(shelves, 1);
+    m.go(1);
+    std::vector<Item> home{m.shelf(0).items[2], m.shelf(1).items[0]};
+    m.set_home(home);
+    CHECK(m.shelf_count() == 3 && m.shelf(0).system == System::home && m.shelf(0).game_count == 2);
+    CHECK(m.cur().system == System::ps2 && m.selected() == 1);
+    CHECK(m.all_games().size() == 5); // Home's copies are not counted
+    m.set_home({});
+    CHECK(m.shelf_count() == 2 && m.cur().system == System::ps2 && m.selected() == 1);
+}
+
 int main()
 {
+    test_home();
     test_move();
     test_clock();
     test_place();

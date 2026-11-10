@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 
 namespace boxshelf::app
 {
@@ -73,10 +74,22 @@ float measure(Face face, std::string_view s, float size, float letter_spacing_em
 
 std::string upper(std::string_view s)
 {
+    // CSS text-transform: uppercase, for ASCII and the Latin-1 letters Portuguese and Spanish use (UTF-8 C3 A0..BE ->
+    // C3 80..9E; ÷ and ÿ stay)
     std::string out(s);
-    for (char &c : out)
+    for (std::size_t i = 0; i < out.size(); ++i)
+    {
+        const auto c = static_cast<unsigned char>(out[i]);
         if (c >= 'a' && c <= 'z')
-            c = static_cast<char>(c - 'a' + 'A');
+            out[i] = static_cast<char>(c - 'a' + 'A');
+        else if (c == 0xc3 && i + 1 < out.size())
+        {
+            const auto n = static_cast<unsigned char>(out[i + 1]);
+            if (n >= 0xa0 && n <= 0xbe && n != 0xb7)
+                out[i + 1] = static_cast<char>(n - 0x20);
+            ++i;
+        }
+    }
     return out;
 }
 
@@ -205,6 +218,7 @@ std::vector<std::string> meta_for(const Item &it, data::System shelf)
 void ShelfScreen::set_library(ShelfModel model, double now)
 {
     model_ = std::move(model);
+    rebuild_home(now);
     shown_shelf_ = -1;
     layout(now, true);
     settle(now);
@@ -315,7 +329,13 @@ void ShelfScreen::play(double now)
     }
     if (r.app.size() != 9)
         return toast(trf("No emulator for %s on this console", tab_name(sys)), false, false, now);
-    launcher_.start(std::move(r));
+    if (launcher_.start(std::move(r)))
+    {
+        // app.js HIST: Home lists what was started last
+        settings_.played(g.id, static_cast<long long>(std::time(nullptr)));
+        save_settings(settings_);
+        rebuild_home(now);
+    }
 }
 
 // .toast: a white pill sliding down from the top; a working one has a turning ring and stays, others leave.
@@ -397,6 +417,86 @@ std::vector<data::Game> ShelfScreen::games() const
     return out;
 }
 
+void ShelfScreen::rebuild_home(double now)
+{
+    // app.js buildHome(): the 12 most recently played games, then the favourites (A to Z), each with its own case
+    std::vector<const Item *> all = model_.all_games();
+    std::vector<Item> items;
+    std::vector<std::pair<long long, const Item *>> played;
+    for (const Item *it : all)
+        if (const auto *h = settings_.history_of(it->game.id); h && h->count > 0)
+            played.emplace_back(h->last, it);
+    std::stable_sort(played.begin(), played.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    std::vector<std::string> seen;
+    for (std::size_t i = 0; i < played.size() && i < 12; ++i)
+    {
+        items.push_back(*played[i].second);
+        seen.push_back(played[i].second->game.id);
+    }
+    std::vector<const Item *> favs;
+    for (const Item *it : all)
+        if (settings_.is_favorite(it->game.id) && std::find(seen.begin(), seen.end(), it->game.id) == seen.end())
+            favs.push_back(it);
+    std::stable_sort(favs.begin(), favs.end(), [](const Item *a, const Item *b) { return data::title_less(a->title, b->title); });
+    for (const Item *it : favs)
+        items.push_back(*it);
+    const bool on_home = !model_.empty() && model_.cur().system == data::System::home;
+    const int before = model_.current();
+    model_.set_home(std::move(items));
+    if (on_home || model_.empty() || model_.cur().system == data::System::home)
+        shown_shelf_ = -1; // Home's cases change: build them again
+    else if (model_.current() != before && shown_shelf_ == before)
+        shown_shelf_ = model_.current(); // the same shelf, at a new index
+    (void)now;
+}
+
+void ShelfScreen::toggle_favorite(double now)
+{
+    const Item *it = model_.item();
+    if (!it || it->kind != ItemKind::game)
+        return;
+    const std::string id = it->game.id, title = it->title;
+    const bool on = settings_.toggle_favorite(id);
+    if (!save_settings(settings_))
+        toast(tr("Could not save the settings"), false, false, now);
+    else
+        toast(on ? trf("%s added to favorites", title) : trf("Removed %s from favorites", title), false, on, now);
+    rebuild_home(now);
+}
+
+void ShelfScreen::shuffle(double now)
+{
+    // L3: lands on a random game of this shelf (the "Surprise me" tile's job, without the tile)
+    const int n = static_cast<int>(model_.empty() ? 0 : model_.cur().items.size());
+    if (n < 2)
+        return;
+    static unsigned seed = static_cast<unsigned>(std::time(nullptr));
+    seed = seed * 1103515245u + 12345u;
+    int pick = static_cast<int>((seed >> 8) % static_cast<unsigned>(n - 1));
+    if (pick >= model_.selected())
+        ++pick;
+    if (model_.go(pick))
+        on_moved(now);
+}
+
+std::vector<std::string> ShelfScreen::meta_line(const Item &it) const
+{
+    if (model_.empty() || model_.cur().system != data::System::home || it.kind != ItemKind::game)
+        return meta_for(it, model_.empty() ? data::System::count : model_.cur().system);
+    // app.js homeLine(): its console, "played <day>", favourite
+    std::vector<std::string> parts{tab_name(it.system)};
+    if (const auto *h = settings_.history_of(it.game.id); h && h->count > 0)
+    {
+        const long long days = (static_cast<long long>(std::time(nullptr)) - h->last) / 86400;
+        parts.push_back(days <= 0   ? std::string(tr("played today"))
+                        : days == 1 ? std::string(tr("played yesterday"))
+                                    : trf("played %s days ago", std::to_string(days)));
+    }
+    if (settings_.is_favorite(it.game.id))
+        parts.push_back(tr("Favorite"));
+    return parts;
+}
+
 void ShelfScreen::set_flipped(bool on, double now)
 {
     const Item *it = model_.item();
@@ -436,12 +536,19 @@ void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
     // Triangle: a tap flips (PAD_HINTS: Flip, hold for favourite); Circle turns a flipped case back.
     if (in.is_pressed(hui::Action::north))
         north_down_ = now;
+    if (north_down_ >= 0.0 && in.is_held(hui::Action::north) && now - north_down_ >= .5)
+    {
+        north_down_ = -1.0; // held: Favorite (PAD_HINTS: Flip, hold ♥)
+        toggle_favorite(now);
+    }
     if ((in.released & hui::action_bit(hui::Action::north)) && north_down_ >= 0.0)
     {
         if (now - north_down_ < .5)
             set_flipped(!flipped_, now);
         north_down_ = -1.0;
     }
+    if (in.is_pressed(hui::Action::l3))
+        shuffle(now);
     if (in.is_pressed(hui::Action::back) && flipped_)
         set_flipped(false, now);
     // Cross: Play (PAD_HINTS)
@@ -972,10 +1079,28 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     const float L = std::min(1088.0f, R * bh / std::max(bd, 1.0f));
     const float band_h = std::round(L * .09f); // .spine-band height: 9%
     const float pad = 8.0f * R / std::max(bd, 1.0f); // .spine-title padding: 8px
+    // Each case's own look. On Home every game keeps its console's box (app.js: --bw = --ch * its ratio): the shelf's
+    // case height, its own width, depth, colours and spine band.
+    struct Look
+    {
+        const data::CaseStyle *st;
+        float w, h, d, L, band_h, pad;
+    };
+    auto look = [&](int i) -> Look
+    {
+        const Item &it = shelf.items[static_cast<std::size_t>(i)];
+        if (shelf.system != data::System::home || it.system == data::System::count)
+            return {&st, bw, bh, bd, L, band_h, pad};
+        const auto &s = data::style(it.system);
+        const float w = bh * s.ratio, d = bh * s.ratio * s.depth;
+        const float l = std::min(1088.0f, R * bh / std::max(d, 1.0f));
+        return {&s, w, bh, d, l, std::round(l * .09f), 8.0f * R / std::max(d, 1.0f)};
+    };
     struct BandTile
     {
         std::string label;
-        float y;
+        std::uint32_t bg, fg;
+        float y, h;
     };
     std::vector<BandTile> tiles;
     std::vector<float> rows(slots_.size(), -1.0f);
@@ -984,14 +1109,17 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     canvas.begin_spine();
     {
         DrawList &sl = canvas.list();
-        const Color plastic = rgb(st.case_color), ink = rgb(st.spine_ink);
-        const Color band_bg = rgb(st.spine_band.bg), band_fg = rgb(st.spine_band.fg);
         float next_row = 0.0f;
         for (int i : drawn)
         {
             if (next_row + R > AH)
                 break;
             const Item &item = shelf.items[static_cast<std::size_t>(i)];
+            const Look lk = look(i);
+            const auto &cst = *lk.st;
+            const float L = lk.L, band_h = lk.band_h, pad = lk.pad;
+            const Color plastic = rgb(cst.case_color), ink = rgb(cst.spine_ink);
+            const Color band_bg = rgb(cst.spine_band.bg), band_fg = rgb(cst.spine_band.fg);
             const float y0 = next_row;
             next_row += R;
             rows[static_cast<std::size_t>(i)] = y0;
@@ -1018,14 +1146,15 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             // .spine-band label: the system's ("GCN"), "EMU" on an emulator tile, "ADD" on the setup tile
             const std::string label = item.kind == ItemKind::emulator ? "EMU"
                                       : item.kind == ItemKind::setup  ? "ADD"
-                                                                      : std::string(st.spine_band.label);
-            auto found = std::find_if(tiles.begin(), tiles.end(), [&](const BandTile &b) { return b.label == label; });
+                                                                      : std::string(cst.spine_band.label);
+            auto found = std::find_if(tiles.begin(), tiles.end(), [&](const BandTile &b)
+                                      { return b.label == label && b.bg == cst.spine_band.bg && b.fg == cst.spine_band.fg && b.h == band_h; });
             if (found == tiles.end())
             {
-                const float ty = tiles.empty() ? 0.0f : tiles.back().y + band_h + 4.0f;
+                const float ty = tiles.empty() ? 0.0f : tiles.back().y + tiles.back().h + 4.0f;
                 if (ty + band_h <= AH)
                 {
-                    tiles.push_back({label, ty});
+                    tiles.push_back({label, cst.spine_band.bg, cst.spine_band.fg, ty, band_h});
                     found = tiles.end() - 1;
                     // display grid, place-items center; 700 (Lexend 800 is the nearest baked weight), .02em
                     sl.push_clip({kBandX, ty, R, band_h});
@@ -1069,10 +1198,11 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         else if (canvas.back_texture())
         {
             // fit the case's proportions inside the 640x960 target; the face shows only that part
+            const Look lk = look(sel);
             const float tw = static_cast<float>(GlCanvas::back_width), th = static_cast<float>(GlCanvas::back_height);
-            float w = tw, h = tw * bh / bw;
+            float w = tw, h = tw * lk.h / lk.w;
             if (h > th)
-                h = th, w = th * bw / bh;
+                h = th, w = th * lk.w / lk.h;
             canvas.begin_back();
             draw_made_up_back(canvas.list(), item, {0, 0, w, h});
             canvas.end_back();
@@ -1089,13 +1219,16 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         const Item &item = shelf.items[static_cast<std::size_t>(i)];
         const float x = slot.x.at(now), z = slot.z.at(now), ry = slot.ry.at(now);
         const bool is_sel = i == sel;
+        const Look lk = look(i);
+        const float L = lk.L, band_h = lk.band_h;
         CaseOp op;
         op.x = kTrackX + dx + x;
         op.y = kTrackY;
         op.z = z;
-        op.width = bw;
-        op.height = bh;
-        op.depth = bd;
+        op.width = lk.w;
+        op.height = lk.h;
+        op.depth = lk.d;
+        op.favorite = item.kind == ItemKind::game && settings_.is_favorite(item.game.id);
         op.yaw = (ry + (is_sel ? turn : 0.0f)) * kPi / 180.0f;
         op.front = cover_texture(canvas, item);
         if (is_sel && back_tex)
@@ -1105,11 +1238,15 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             for (int c = 0; c < 4; ++c)
                 op.back_uv[c] = back_uv[c];
         }
-        op.side_r = side.r, op.side_g = side.g, op.side_b = side.b;
+        const Color own_side = rgb(lk.st->case_side);
+        if (lk.st == &st)
+            op.side_r = side.r, op.side_g = side.g, op.side_b = side.b;
+        else
+            op.side_r = own_side.r * .8f, op.side_g = own_side.g * .8f, op.side_b = own_side.b * .8f;
         op.alpha = alpha;
         op.shade = is_sel ? 1.0f : 0.66f; // .slot:not(.sel) .dim{opacity:.34}
         // The front is rounded only away from the spine you see; cases right of the selection (.rside) mirror it.
-        op.corner = st.rc;
+        op.corner = lk.st->rc;
         op.corner_side = i > sel ? -1.0f : 1.0f;
         // .f-front::after film and .glare: full on the selected case, opacity .55 on the others
         op.film = is_sel ? 1.0f : .55f;
@@ -1282,7 +1419,7 @@ void ShelfScreen::draw_info(DrawList &list, double now)
     y += app::face(Face::lexend500).font->line_height(44.0f) + 6.0f;
     if (it)
     {
-        const auto parts = meta_for(*it, model_.cur().system);
+        const auto parts = meta_line(*it);
         const float dot_gap = 14.0f * .6f;
         float total = 0;
         for (std::size_t k = 0; k < parts.size(); ++k)
@@ -1315,12 +1452,13 @@ void ShelfScreen::draw_hints(DrawList &list)
     };
     const Item *it = model_.item();
     const char *play = !it || it->kind == ItemKind::setup ? tr("Set up") : tr("Play");
-    // Only what works today (owner, 2026-11-10): Details, Inspect, Shuffle, Settings / Museum and the held actions
-    // (favourite, sort) come back with their features.
+    // Only what works today (owner, 2026-11-10): Details, Inspect, Settings / Museum and the held sort come back with
+    // their features.
     const Hint hints[] = {
         {{"L2", "R2"}, tr("System"), nullptr},
-        {{"tri", nullptr}, tr("Flip"), nullptr},
+        {{"tri", nullptr}, tr("Flip"), "\xe2\x99\xa5"},
         {{"x", nullptr}, play, nullptr},
+        {{"L3", nullptr}, tr("Shuffle"), nullptr},
         {{"menu", nullptr}, tr("Menu"), nullptr},
     };
     const float font = 12.0f, key_h = 18.0f, hint_h = 28.0f, pad_x = 10.0f, gap_in = 7.0f, gap = 6.0f;
@@ -1559,6 +1697,7 @@ void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
     const std::string from = id.substr(0, id.find(':')); // the shelf it was found on
     if (!model_.move_item(id, to))
         return;
+    rebuild_home(now); // Home keeps copies of the games
     settings_.set_move(id, std::string(data::style(to).key) == from ? std::string() : std::string(data::style(to).key));
     if (!save_settings(settings_))
         toast(tr("Could not save the settings"), false, false, now);
@@ -1652,7 +1791,7 @@ void ShelfScreen::draw_menu(GlCanvas &canvas, double now)
         }
         text(list, Face::lexend600, title, tx, y + 6 + 14 + 5, 23.0f, kInk, Align::left, 0.0f, 26.0f);
         std::string meta;
-        for (const auto &m : meta_for(*it, model_.cur().system))
+        for (const auto &m : meta_line(*it))
             meta += (meta.empty() ? "" : " \xc2\xb7 ") + m;
         text(list, Face::lexend500, meta, tx, y + 6 + 14 + 5 + 26 + 4, 13.0f, kInkDim, Align::left, 0.0f, 16.0f);
         y += 68.0f + 16.0f;

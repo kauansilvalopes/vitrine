@@ -55,6 +55,7 @@ struct CaseOp
     float spine_shade[4] = {0, 0, 0, .5f};   // .f-left::after film: black alpha back, white alpha, black front, stop
     float film = 0.0f;                       // .f-front::after film strength (1 selected, .55 others)
     float back_uv[4] = {0, 0, 1, 1};         // the part of `back` this case shows
+    bool favorite = false;                   // style.css .slot.fav .f-front::before: the heart badge
 };
 
 // A disc: label picture on the face, silver rim, hub and hole.
@@ -111,6 +112,8 @@ class Gl3D
     float flip_ = 0.0f, shine_ = 0.0f, sheen_ = 0.0f, spin_ = 0.0f, ambient_ = 0.62f;
     float uvrect_[4] = {0, 0, 1, 1}, glare_[4] = {0, 0, 1, -9}, round_[2] = {0, 0};
     float spine_[3] = {0, 0, 0}, band_[4] = {0, 0, 0, 0}, shade_[4] = {0, 0, 0, .5f}, film_ = 0.0f;
+    float badge_[3] = {0, 1, 1}; // on, face width and height in virtual pixels
+    int u_badge_ = -1;
     int u_uvrect_ = -1, u_glare_ = -1, u_round_ = -1, u_spine_ = -1, u_band_ = -1, u_shade_ = -1, u_film_ = -1;
     int u_shine_ = -1, u_sheen_ = -1, u_spin_ = -1;
     int spine_first_ = 0, spine_right_first_ = 0;

@@ -444,6 +444,17 @@ int main(int argc, char **argv)
         for (const auto &sh : boxshelf::data::build_shelves(games))
             if (!sh.games.empty())
                 shelves.push_back(boxshelf::app::prepare_shelf(sh, false));
+        if (key == "home")
+        {
+            // a few favourites and three recently played games, so Home shows up with mixed cases
+            boxshelf::app::Settings with_home;
+            for (std::size_t g = 0; g < games.size(); g += 9)
+                with_home.favorites.push_back(games[g].id);
+            with_home.played(games[50].id, 1794316500LL);
+            with_home.played(games[3].id, 1794316500LL - 86400);
+            with_home.played(games[95].id, 1794316500LL - 3 * 86400);
+            screen.set_settings(with_home);
+        }
         boxshelf::app::ShelfModel model;
         model.set(std::move(shelves));
         screen.set_library(std::move(model), 0.0);

@@ -33,6 +33,46 @@ void Settings::set_move(const std::string &game_id, const std::string &system_ke
         moves.emplace_back(game_id, system_key);
 }
 
+bool Settings::is_favorite(const std::string &game_id) const
+{
+    for (const auto &f : favorites)
+        if (f == game_id)
+            return true;
+    return false;
+}
+
+bool Settings::toggle_favorite(const std::string &game_id)
+{
+    for (auto it = favorites.begin(); it != favorites.end(); ++it)
+        if (*it == game_id)
+        {
+            favorites.erase(it);
+            return false;
+        }
+    favorites.push_back(game_id);
+    return true;
+}
+
+void Settings::played(const std::string &game_id, long long when)
+{
+    for (auto &h : history)
+        if (h.id == game_id)
+        {
+            h.last = when;
+            ++h.count;
+            return;
+        }
+    history.push_back({game_id, when, 1});
+}
+
+const Settings::Played *Settings::history_of(const std::string &game_id) const
+{
+    for (const auto &h : history)
+        if (h.id == game_id)
+            return &h;
+    return nullptr;
+}
+
 std::string Settings::to_json() const
 {
     cJSON *root = cJSON_CreateObject();
@@ -43,6 +83,16 @@ std::string Settings::to_json() const
     cJSON *m = cJSON_AddObjectToObject(root, "moves");
     for (const auto &[id, key] : moves)
         cJSON_AddStringToObject(m, id.c_str(), key.c_str());
+    cJSON *f = cJSON_AddArrayToObject(root, "favorites");
+    for (const auto &id : favorites)
+        cJSON_AddItemToArray(f, cJSON_CreateString(id.c_str()));
+    cJSON *h = cJSON_AddObjectToObject(root, "history");
+    for (const auto &p : history)
+    {
+        cJSON *e = cJSON_AddObjectToObject(h, p.id.c_str());
+        cJSON_AddNumberToObject(e, "last", static_cast<double>(p.last));
+        cJSON_AddNumberToObject(e, "count", p.count);
+    }
     char *text = cJSON_Print(root);
     std::string out = text ? text : "{}";
     cJSON_free(text);
@@ -65,6 +115,18 @@ Settings Settings::from_json(const std::string &json)
     cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "moves"))
         if (e->string && cJSON_IsString(e) && e->valuestring)
             s.moves.emplace_back(e->string, e->valuestring);
+    cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "favorites"))
+        if (cJSON_IsString(e) && e->valuestring)
+            s.favorites.emplace_back(e->valuestring);
+    cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "history"))
+    {
+        if (!e->string)
+            continue;
+        const cJSON *last = cJSON_GetObjectItemCaseSensitive(e, "last");
+        const cJSON *count = cJSON_GetObjectItemCaseSensitive(e, "count");
+        s.history.push_back({e->string, cJSON_IsNumber(last) ? static_cast<long long>(last->valuedouble) : 0,
+                             cJSON_IsNumber(count) ? count->valueint : 0});
+    }
     cJSON_Delete(root);
     return s;
 }
