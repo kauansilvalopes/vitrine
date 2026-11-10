@@ -466,3 +466,14 @@ by the owner's other assistant (12c417f, c3acc3a), which could not build. Here:
   shown to users; changing it could make the console treat the update as another title).
 - Release: tag ps5-v0.2.1, pre-release "Vitrine 0.2.1", `PPSA99850.zip` (folder PPSA99850/ at its root), SHA-256
   79a906e0caf8ad40658cb91e39d1095941320716294df4fad605a28a6fc44566. Not run on the console yet.
+
+## 2026-11-10 — release ps5-v0.2.2 (new icon and palette)
+
+The repository is now github.com/kauansilvalopes/vitrine (the old address redirects; this clone still pushes through
+the old remote URL: repointing it was blocked by the tool's safety check, the owner can run `git remote set-url`).
+Pulled da677c1 (the owner's new icon in the new palette, 512x512, not changed here). contentVersion 01.002.002.
+`make test` (data 228/0, shelf 64/0, list-library, preview smoke) and `make app` pass; in dist/PPSA99850:
+titleName "Vitrine", contentVersion 01.002.002, icon0.png byte-identical to sce_sys/icon0.png, also inside the zip
+(checked on the PC build output). Release: tag ps5-v0.2.2, "Vitrine 0.2.2", marked Latest, `PPSA99850.zip`
+(PPSA99850/ at its root), SHA-256 ea6f6e7d81794485f07e644469b8f1310aabab468885887d87dae0f68e861fea. Not run on the
+console.
