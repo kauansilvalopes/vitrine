@@ -442,3 +442,12 @@ Owner said "sobe". Pushed branch `ps5-port`, tag `ps5-v0.1.0`, GitHub pre-releas
 `PPSA99850.zip` (SHA-256 eab81920680d25f439032ea63b2925a9812f3c1ef4838b7b71366462faedef3f), built from b1fea61 after
 the full test run. Marked pre-release: Flip, Play, the menu, backs and demo shelves are verified on the PC preview
 only. The tour videos (`.local/video`) are not published: they show box art.
+
+## 2026-11-10 — release ps5-v0.2.0
+
+Owner: "take the demo part out and publish it as a release". The demo shelves are gone from the app (menu row,
+setting, main); their title list moved to `ps5/tools/demo_library.*`, used only by the PC tour video and
+`tools/demo-check.sh`. contentVersion 01.002.000. Tests (data 228/0, shelf 64/0), preview of the menu in pt, `make
+app`. Pushed `ps5-port` (cb43b82), tag `ps5-v0.2.0`, GitHub release "Boxshelf PS5 0.2.0" (full release, marked latest)
+with `PPSA99850.zip` (SHA-256 755525b11f34b31e14fe8904a0779bfddb9b95f2ce4179bdc508bacd9985f252). The notes say Flip,
+Play, the menu and the backs were tested on the PC preview; the console check of this build is still to come.
