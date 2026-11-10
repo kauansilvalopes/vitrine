@@ -12,6 +12,8 @@ struct Settings
 {
     std::string language; // "en", "pt", "es"; empty: the console's language
     bool backs = true;    // download the backs of the boxes too (Menu → Box art backs)
+    std::string sort = "az";    // app.js ui.sort: "az", "recent" (last played), "most" (most played)
+    std::string filter = "all"; // app.js ui.filter: "all", "fav", "played", "unplayed"
     // Games put on another shelf from the menu: game id -> Boxshelf system key ("sw", "n64"...)
     std::vector<std::pair<std::string, std::string>> moves;
     // Favourites (hold Triangle; app.js ui.favorites) and play history (app.js HIST: last start, how many starts)

@@ -406,7 +406,12 @@ int main(int argc, char **argv)
                 case Next: in.pressed = hui::action_bit(hui::Action::jump_next); break;
                 case Prev: in.pressed = hui::action_bit(hui::Action::jump_prev); break;
                 case Back: in.pressed = hui::action_bit(hui::Action::back); break;
-                case Menu: in.pressed = hui::action_bit(hui::Action::menu); break;
+                case Menu:
+                    in.pressed = in.held = hui::action_bit(hui::Action::menu);
+                    screen.input(in, now, 1.0f / 60.0f);
+                    in = hui::InputFrame{};
+                    in.released = hui::action_bit(hui::Action::menu);
+                    break;
                 case Flip:
                     in.pressed = in.held = hui::action_bit(hui::Action::north);
                     screen.input(in, now, 1.0f / 60.0f);
@@ -444,7 +449,7 @@ int main(int argc, char **argv)
         for (const auto &sh : boxshelf::data::build_shelves(games))
             if (!sh.games.empty())
                 shelves.push_back(boxshelf::app::prepare_shelf(sh, false));
-        if (key == "home")
+        if (key == "home" || std::getenv("BOXSHELF_FILTER") || std::getenv("BOXSHELF_SORT"))
         {
             // a few favourites and three recently played games, so Home shows up with mixed cases
             boxshelf::app::Settings with_home;
@@ -453,6 +458,10 @@ int main(int argc, char **argv)
             with_home.played(games[50].id, 1794316500LL);
             with_home.played(games[3].id, 1794316500LL - 86400);
             with_home.played(games[95].id, 1794316500LL - 3 * 86400);
+            if (const char *f = std::getenv("BOXSHELF_FILTER")) // fav, played, unplayed
+                with_home.filter = f;
+            if (const char *o = std::getenv("BOXSHELF_SORT")) // recent, most
+                with_home.sort = o;
             screen.set_settings(with_home);
         }
         boxshelf::app::ShelfModel model;
@@ -515,6 +524,11 @@ int main(int argc, char **argv)
         if (flip == 4)
         {
             press(screen, now, hui::Action::menu);
+            {
+                hui::InputFrame up; // the menu opens on release (a hold opens it on Sort)
+                up.released = hui::action_bit(hui::Action::menu);
+                screen.input(up, now + 0.05, 0.016f);
+            }
             press(screen, now + 0.1, hui::Action::confirm); // opens "Move to shelf"
             host.render(screen, now + 0.2);
             host.render(screen, now + 1.0);
@@ -576,6 +590,11 @@ int main(int argc, char **argv)
     else if (flip == 4)
     {
         press(screen, now, hui::Action::menu);
+            {
+                hui::InputFrame up; // the menu opens on release (a hold opens it on Sort)
+                up.released = hui::action_bit(hui::Action::menu);
+                screen.input(up, now + 0.05, 0.016f);
+            }
         press(screen, now + 0.1, hui::Action::confirm);
         now += 1.0;
     }

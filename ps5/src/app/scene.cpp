@@ -217,8 +217,9 @@ std::vector<std::string> meta_for(const Item &it, data::System shelf)
 
 void ShelfScreen::set_library(ShelfModel model, double now)
 {
-    model_ = std::move(model);
-    rebuild_home(now);
+    library_ = std::move(model);
+    model_ = library_;
+    arrange(now);
     shown_shelf_ = -1;
     layout(now, true);
     settle(now);
@@ -330,12 +331,7 @@ void ShelfScreen::play(double now)
     if (r.app.size() != 9)
         return toast(trf("No emulator for %s on this console", tab_name(sys)), false, false, now);
     if (launcher_.start(std::move(r)))
-    {
-        // app.js HIST: Home lists what was started last
-        settings_.played(g.id, static_cast<long long>(std::time(nullptr)));
-        save_settings(settings_);
-        rebuild_home(now);
-    }
+        starting_id_ = g.id; // app.js HIST: recorded once the game is up (draw_toast)
 }
 
 // .toast: a white pill sliding down from the top; a working one has a turning ring and stays, others leave.
@@ -356,6 +352,20 @@ void ShelfScreen::draw_toast(DrawList &list, double now)
     {
         launch_serial_ = st.serial;
         toast(st.message, st.working, st.ok && !st.working, now);
+        if (!st.working && !starting_id_.empty())
+        {
+            // the start is over: a confirmed one goes into the history (Home: recently played)
+            if (st.ok)
+            {
+                settings_.played(starting_id_, static_cast<long long>(std::time(nullptr)));
+                save_settings(settings_);
+                if (settings_.filter == "played" || settings_.filter == "unplayed" || settings_.sort != "az")
+                    arrange(now);
+                else
+                    rebuild_home(now);
+            }
+            starting_id_.clear();
+        }
     }
     if (toast_.empty())
         return;
@@ -410,17 +420,15 @@ void ShelfScreen::set_art_status(const std::string &status, bool running, double
 std::vector<data::Game> ShelfScreen::games() const
 {
     std::vector<data::Game> out;
-    for (int s = 0; s < model_.shelf_count(); ++s)
-        for (const auto &it : model_.shelf(s).items)
-            if (it.kind == ItemKind::game)
-                out.push_back(it.game);
+    for (const Item *it : library_.all_games())
+        out.push_back(it->game);
     return out;
 }
 
 void ShelfScreen::rebuild_home(double now)
 {
     // app.js buildHome(): the 12 most recently played games, then the favourites (A to Z), each with its own case
-    std::vector<const Item *> all = model_.all_games();
+    std::vector<const Item *> all = library_.all_games(); // Home ignores the filter, as in app.js
     std::vector<Item> items;
     std::vector<std::pair<long long, const Item *>> played;
     for (const Item *it : all)
@@ -450,6 +458,60 @@ void ShelfScreen::rebuild_home(double now)
     (void)now;
 }
 
+void ShelfScreen::arrange(double now)
+{
+    const data::System keep_sys = model_.empty() ? data::System::count : model_.cur().system;
+    const Item *was = model_.item();
+    const std::string keep_id = was && was->kind == ItemKind::game ? was->game.id : std::string();
+    const std::string &f = settings_.filter, &order = settings_.sort;
+    auto keep = [&](const Item &it)
+    {
+        if (it.kind != ItemKind::game || f == "all")
+            return true;
+        const auto *h = settings_.history_of(it.game.id);
+        const bool played = h && h->count > 0;
+        return f == "fav" ? settings_.is_favorite(it.game.id) : f == "played" ? played : f == "unplayed" ? !played : true;
+    };
+    auto key = [&](const Item &it) -> long long
+    {
+        const auto *h = settings_.history_of(it.game.id);
+        if (!h || h->count == 0)
+            return -1;
+        return order == "recent" ? h->last : h->count;
+    };
+    std::vector<Shelf> out;
+    for (int i = 0; i < library_.shelf_count(); ++i)
+    {
+        const Shelf &src = library_.shelf(i);
+        if (src.system == data::System::home)
+            continue;
+        Shelf s;
+        s.system = src.system;
+        for (const auto &it : src.items)
+            if (keep(it))
+                s.items.push_back(it);
+        if (order == "recent" || order == "most") // the played ones first, the rest in the shelf's own order
+            std::stable_sort(s.items.begin(), s.items.end(), [&](const Item &a, const Item &b) { return key(a) > key(b); });
+        s.game_count = static_cast<int>(std::count_if(s.items.begin(), s.items.end(),
+                                                      [](const Item &x) { return x.kind == ItemKind::game; }));
+        if (s.game_count > 0) // a shelf the filter empties goes, like a shelf with no games
+            out.push_back(std::move(s));
+    }
+    int current = 0;
+    for (std::size_t i = 0; i < out.size(); ++i)
+        if (out[i].system == keep_sys)
+            current = static_cast<int>(i);
+    model_.set(std::move(out), current);
+    rebuild_home(now);
+    if (!model_.empty() && !keep_id.empty())
+        for (std::size_t i = 0; i < model_.cur().items.size(); ++i)
+            if (model_.cur().items[i].kind == ItemKind::game && model_.cur().items[i].game.id == keep_id)
+                model_.go(static_cast<int>(i));
+    shown_shelf_ = -1;
+    flipped_ = false;
+    flip_.set(0.0f, now, true);
+}
+
 void ShelfScreen::toggle_favorite(double now)
 {
     const Item *it = model_.item();
@@ -461,7 +523,10 @@ void ShelfScreen::toggle_favorite(double now)
         toast(tr("Could not save the settings"), false, false, now);
     else
         toast(on ? trf("%s added to favorites", title) : trf("Removed %s from favorites", title), false, on, now);
-    rebuild_home(now);
+    if (settings_.filter == "fav")
+        arrange(now);
+    else
+        rebuild_home(now);
 }
 
 void ShelfScreen::shuffle(double now)
@@ -513,8 +578,28 @@ void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
 {
     if (qm_open_)
         return menu_input(in, now);
+    // Options: a tap opens the menu, a hold opens it on Sort (PAD_HINTS: Menu, hold Sort)
     if (in.is_pressed(hui::Action::menu))
+        menu_down_ = now;
+    if (menu_down_ >= 0.0 && in.is_held(hui::Action::menu) && now - menu_down_ >= .5)
+    {
+        menu_down_ = -1.0;
+        open_menu(now);
+        const auto rows = menu_rows();
+        for (std::size_t r = 0; r < rows.size(); ++r)
+            if (rows[r].kind == 5)
+            {
+                qm_row_ = qm_sub_ = static_cast<int>(r);
+                qm_chip_ = std::max(0, rows[r].current);
+                qm_hl_.set(static_cast<float>(r), now, true);
+            }
+        return;
+    }
+    if ((in.released & hui::action_bit(hui::Action::menu)) && menu_down_ >= 0.0)
+    {
+        menu_down_ = -1.0;
         return open_menu(now);
+    }
     if (model_.empty())
         return;
     // D-pad / left stick: one case per step (go(sel +- 1)); the tracker repeats a held direction.
@@ -717,6 +802,7 @@ void ShelfScreen::art_arrived(const std::string &game_id, const std::string &pat
     if (bar != std::string::npos && bar + 5 == game_id.size())
     {
         // a back: the case shows it from its next turn
+        library_.set_back(game_id.substr(0, bar), path);
         if (model_.set_back(game_id.substr(0, bar), path))
         {
             const auto it = art_.find(game_id);
@@ -731,6 +817,7 @@ void ShelfScreen::art_arrived(const std::string &game_id, const std::string &pat
         }
         return;
     }
+    library_.set_cover(game_id, path);
     if (model_.set_cover(game_id, path))
     {
         // the old picture (or the placeholder) goes; the next frame asks for the new one
@@ -1452,14 +1539,13 @@ void ShelfScreen::draw_hints(DrawList &list)
     };
     const Item *it = model_.item();
     const char *play = !it || it->kind == ItemKind::setup ? tr("Set up") : tr("Play");
-    // Only what works today (owner, 2026-11-10): Details, Inspect, Settings / Museum and the held sort come back with
-    // their features.
+    // Only what works today (owner, 2026-11-10): Details, Inspect and Settings / Museum come back with their features.
     const Hint hints[] = {
         {{"L2", "R2"}, tr("System"), nullptr},
         {{"tri", nullptr}, tr("Flip"), "\xe2\x99\xa5"},
         {{"x", nullptr}, play, nullptr},
         {{"L3", nullptr}, tr("Shuffle"), nullptr},
-        {{"menu", nullptr}, tr("Menu"), nullptr},
+        {{"menu", nullptr}, tr("Menu"), tr("Sort")},
     };
     const float font = 12.0f, key_h = 18.0f, hint_h = 28.0f, pad_x = 10.0f, gap_in = 7.0f, gap = 6.0f;
     auto key_width = [&](const char *k)
@@ -1587,6 +1673,16 @@ void ShelfScreen::draw_empty(DrawList &list)
     // the PS5 build has no setup screen for yet). While the library is read, the kicker says what is being read.
     const bool loading = !status_.empty();
     const float cy = kTrackY;
+    if (!loading && settings_.filter != "all" && !library_.empty())
+    {
+        // the filter left no game: the shelves come back with Menu → Filter → All games
+        text(list, Face::lexend600, tr("NOTHING MATCHES THE FILTER"), W * .5f, cy - 52.0f, 11.0f, kInkDim, Align::center,
+             .24f, 14.0f);
+        text(list, Face::lexend600, tr("No games here yet"), W * .5f, cy - 28.0f, 34.0f, kInk, Align::center, 0.0f, 42.0f);
+        text(list, Face::lexend500, tr("Menu > Filter > All games shows them again."), W * .5f,
+             cy + 24.0f, 16.0f, kInkDim, Align::center, 0.0f, 22.0f);
+        return;
+    }
     text(list, Face::lexend600, loading ? upper(tr(status_.c_str())) : tr("NOTHING ON THE SHELF YET"), W * .5f,
          cy - 52.0f, 11.0f, kInkDim, Align::center, .24f, 14.0f);
     text(list, Face::lexend600, loading ? tr("Reading your library") : tr("Connect your emulators and game folders"),
@@ -1644,6 +1740,26 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
                   {tr("Find missing"), tr("Download all again")}, -1};
         rows.push_back(std::move(a));
     }
+    {
+        static const char *const sorts[][2] = {{"az", "A\xe2\x80\x93Z"}, {"recent", "Last played"}, {"most", "Most played"}};
+        static const char *const filters[][2] = {
+            {"all", "All games"}, {"fav", "Favorites"}, {"played", "Played"}, {"unplayed", "Not played yet"}};
+        MenuRow so{5, tr("Sort"), "", {}, 0}, fi{6, tr("Filter"), "", {}, 0};
+        for (int i = 0; i < 3; ++i)
+        {
+            so.chips.push_back(tr(sorts[i][1]));
+            if (settings_.sort == sorts[i][0])
+                so.current = i, so.value = tr(sorts[i][1]);
+        }
+        for (int i = 0; i < 4; ++i)
+        {
+            fi.chips.push_back(tr(filters[i][1]));
+            if (settings_.filter == filters[i][0])
+                fi.current = i, fi.value = tr(filters[i][1]);
+        }
+        rows.push_back(std::move(so));
+        rows.push_back(std::move(fi));
+    }
     rows.push_back({3, tr("Box backs"), settings_.backs ? tr("Download") : tr("Off"), {tr("Download"), tr("Off")},
                     settings_.backs ? 0 : 1});
     MenuRow l{1, tr("Language"), language_name(language()), {}, 0};
@@ -1659,6 +1775,20 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
 
 void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
 {
+    if (row.kind == 5 || row.kind == 6)
+    {
+        static const char *const sorts[] = {"az", "recent", "most"};
+        static const char *const filters[] = {"all", "fav", "played", "unplayed"};
+        std::string &v = row.kind == 5 ? settings_.sort : settings_.filter;
+        const std::string pick = row.kind == 5 ? sorts[chip] : filters[chip];
+        if (v == pick)
+            return;
+        v = pick;
+        if (!save_settings(settings_))
+            toast(tr("Could not save the settings"), false, false, now);
+        arrange(now);
+        return;
+    }
     if (row.kind == 3)
     {
         const bool on = chip == 0;
@@ -1695,9 +1825,9 @@ void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
     const data::System to = kMoveTargets[chip];
     const std::string id = it->game.id;
     const std::string from = id.substr(0, id.find(':')); // the shelf it was found on
-    if (!model_.move_item(id, to))
+    if (!library_.move_item(id, to))
         return;
-    rebuild_home(now); // Home keeps copies of the games
+    arrange(now); // the shelves (and Home) again, from the library
     settings_.set_move(id, std::string(data::style(to).key) == from ? std::string() : std::string(data::style(to).key));
     if (!save_settings(settings_))
         toast(tr("Could not save the settings"), false, false, now);

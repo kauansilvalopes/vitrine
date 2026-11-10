@@ -89,6 +89,8 @@ class ShelfScreen
     void toggle_favorite(double now);
     void shuffle(double now);
     std::vector<std::string> meta_line(const Item &item) const;
+    // app.js arrange(): the shelves as the library has them, sorted and filtered into model_ (Menu → Sort / Filter)
+    void arrange(double now);
 
   public:
     // The owner's saved choices (language, games moved to another shelf); the quick menu changes and saves them.
@@ -150,7 +152,9 @@ class ShelfScreen
     // Triangle: flip() turns the selected case round (.box transition: transform .75s cubic-bezier(.3,.95,.25,1)).
     bool flipped_ = false;
     Glide flip_{0.0f, 0.0f, -1.0, .75f, Bezier{.3f, .95f, .25f, 1.0f}, true};
-    double north_down_ = -1.0;
+    double north_down_ = -1.0, menu_down_ = -1.0;
+    ShelfModel library_; // every game, in each shelf's own order; model_ is what the sort and filter leave
+    std::string starting_id_; // the game being started: it goes into the history once the console confirms it
     Settings settings_;
     bool qm_open_ = false;
     Glide qm_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};
