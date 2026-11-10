@@ -494,3 +494,14 @@ function yet must not show (R3 inspect, settings, square details) until they are
   **ps5-v0.2.4** with the new icon: contentVersion 01.002.004, tests (data 232/0, shelf 64/0), `make app`, the
   zip's icon0.png is the VI icon. "Vitrine 0.2.4", Latest, `PPSA99850.zip`, SHA-256
   e98ccef5d191e52d245c2a0c9650a4477420f71bfa19feabb528de1d01fc7b54.
+
+## 2026-11-10 — release ps5-v0.2.5 (Roman VI icon + the hotfix)
+
+The owner asked to wait for a new logo before releasing the hotfix; then the other assistant's task came: release the
+Roman "VI" icon (ff0bc46, 512x512, not changed here) as 0.2.3. Tags ps5-v0.2.3 and ps5-v0.2.4 already existed
+(pushed before the wait, no release on either; nothing deleted), and the hotfix above was still unpushed, so both
+ship together as **ps5-v0.2.5**: merged ff0bc46 (no rewrite), contentVersion 01.002.005. Verified on the PC build:
+tests (data 232/0, shelf 64/0, list-library, preview smoke), `make app`; dist/PPSA99850 says "Vitrine" /
+01.002.005 and the zip's icon0.png is byte-identical to ff0bc46's. Release "Vitrine 0.2.5", Latest,
+`PPSA99850.zip` (PPSA99850/ at its root), SHA-256 45251ad72becd1dbbbd597687bf69a5cbed938217021546f80f48b1980f337f2.
+Not run on the console.
