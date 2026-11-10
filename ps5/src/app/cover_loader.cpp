@@ -94,58 +94,60 @@ void compose_icon_cover(const std::uint32_t *icon, int edge, data::System system
     }
 }
 
-void compose_square_cover(const std::uint32_t *icon, int edge, data::System system, int width, int height,
-                          std::uint32_t *out)
+void frame_inner(data::System system, int width, int height, int &x, int &y, int &inner_w, int &inner_h)
 {
     const auto &st = data::style(system);
-    const int band = st.has_band ? static_cast<int>(std::lround(height * 0.085)) : 0;
-    const int art = std::min(width, height - band); // the square, as wide as the face
-    const int ax = (width - art) / 2;
-    // below the art: a soft version of its bottom rows (8 x 8 grid averaged, stretched), darkening to the bottom
-    constexpr int G = 8;
-    Rgb grid[G];
-    for (int gx = 0; gx < G; ++gx)
+    // .f-front{padding:var(--edge)} with edge = bw*style.edge; .f-front{padding-left:var(--edge-in)}: 0 when wrap
+    const int e = std::max(1, static_cast<int>(std::lround(width * st.edge)));
+    const int left = st.wrap ? 0 : e;
+    x = left;
+    y = e;
+    inner_w = std::max(1, width - left - e);
+    inner_h = std::max(1, height - 2 * e);
+}
+
+void frame_cover(data::System system, const std::uint32_t *art, int inner_w, int inner_h, std::uint32_t *out,
+                 int width, int height)
+{
+    const auto &st = data::style(system);
+    int ix, iy, iw, ih;
+    frame_inner(system, width, height, ix, iy, iw, ih);
+    const float cr = static_cast<float>((st.case_color >> 16) & 0xff), cg = static_cast<float>((st.case_color >> 8) & 0xff),
+                cb = static_cast<float>(st.case_color & 0xff);
+    for (int y = 0; y < height; ++y)
     {
-        float r = 0, g = 0, b = 0;
-        int n = 0;
-        for (int y = edge * 3 / 4; y < edge; y += std::max(1, edge / 32))
-            for (int x = gx * edge / G; x < (gx + 1) * edge / G; x += std::max(1, edge / 64))
-            {
-                const Rgb c = unpack(icon[y * edge + x]);
-                r += c.r, g += c.g, b += c.b, ++n;
-            }
-        grid[gx] = n ? Rgb{r / n, g / n, b / n} : Rgb{22, 26, 32};
-    }
-    const int below = band + art;
-    for (int y = below; y < height; ++y)
-    {
-        const float t = static_cast<float>(y - below) / static_cast<float>(std::max(1, height - below));
-        const float k = 0.62f * (1.0f - t) + 0.18f * t;
+        // linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 18%, transparent 34%)
+        const float ty = static_cast<float>(y) / static_cast<float>(height);
+        const float rim = ty < .18f ? .16f + (.04f - .16f) * ty / .18f : ty < .34f ? .04f * (1.0f - (ty - .18f) / .16f) : 0.0f;
         for (int x = 0; x < width; ++x)
         {
-            const float fx = (static_cast<float>(x) + 0.5f) * G / static_cast<float>(width) - 0.5f;
-            const int x0 = std::clamp(static_cast<int>(std::floor(fx)), 0, G - 1), x1 = std::min(x0 + 1, G - 1);
-            const float tx = std::clamp(fx - static_cast<float>(x0), 0.0f, 1.0f);
-            const Rgb a = grid[x0], b = grid[x1];
-            out[y * width + x] = pack((a.r + (b.r - a.r) * tx) * k, (a.g + (b.g - a.g) * tx) * k, (a.b + (b.b - a.b) * tx) * k);
+            Rgb c{cr, cg, cb};
+            const int ax = x - ix, ay = y - iy;
+            if (ax >= 0 && ay >= 0 && ax < inner_w && ay < inner_h && ax < iw && ay < ih)
+                c = unpack(art[ay * inner_w + ax]);
+            // linear-gradient(90deg, rgba(0,0,0,.14), transparent 10%, transparent 88%, rgba(0,0,0,.18))
+            const float tx = static_cast<float>(x) / static_cast<float>(width);
+            const float dark = tx < .10f ? .14f * (1.0f - tx / .10f) : tx > .88f ? .18f * (tx - .88f) / .12f : 0.0f;
+            const float k = 1.0f - dark;
+            out[y * width + x] = pack((c.r + (255.0f - c.r) * rim) * k, (c.g + (255.0f - c.g) * rim) * k,
+                                      (c.b + (255.0f - c.b) * rim) * k);
         }
     }
-    // the band
-    if (band > 0)
+}
+
+void fill_square(const std::uint32_t *icon, int edge, int width, int height, std::uint32_t *out)
+{
+    // object-fit: cover of a square into width x height (centre crop), box-filtered
+    const float scale = std::max(static_cast<float>(width), static_cast<float>(height)) / static_cast<float>(edge);
+    const float ox = (static_cast<float>(edge) * scale - width) * .5f, oy = (static_cast<float>(edge) * scale - height) * .5f;
+    for (int y = 0; y < height; ++y)
     {
-        const std::uint32_t c = pack(static_cast<float>((st.band.bg >> 16) & 0xff),
-                                     static_cast<float>((st.band.bg >> 8) & 0xff), static_cast<float>(st.band.bg & 0xff));
-        for (int y = 0; y < band; ++y)
-            for (int x = 0; x < width; ++x)
-                out[y * width + x] = c;
-    }
-    // the art, scaled with a box filter
-    for (int y = 0; y < art; ++y)
-    {
-        const int sy0 = y * edge / art, sy1 = std::max(sy0 + 1, (y + 1) * edge / art);
-        for (int x = 0; x < art; ++x)
+        const int sy0 = std::clamp(static_cast<int>((y + oy) / scale), 0, edge - 1);
+        const int sy1 = std::clamp(static_cast<int>((y + 1 + oy) / scale), sy0 + 1, edge);
+        for (int x = 0; x < width; ++x)
         {
-            const int sx0 = x * edge / art, sx1 = std::max(sx0 + 1, (x + 1) * edge / art);
+            const int sx0 = std::clamp(static_cast<int>((x + ox) / scale), 0, edge - 1);
+            const int sx1 = std::clamp(static_cast<int>((x + 1 + ox) / scale), sx0 + 1, edge);
             float r = 0, g = 0, b = 0;
             int n = 0;
             for (int sy = sy0; sy < sy1; ++sy)
@@ -154,17 +156,9 @@ void compose_square_cover(const std::uint32_t *icon, int edge, data::System syst
                     const Rgb c = unpack(icon[sy * edge + sx]);
                     r += c.r, g += c.g, b += c.b, ++n;
                 }
-            out[(band + y) * width + ax + x] = pack(r / n, g / n, b / n);
+            out[y * width + x] = pack(r / n, g / n, b / n);
         }
     }
-    // a narrow side gap (landscape faces): the art's edge colours
-    for (int y = band; y < band + art; ++y)
-        for (int x = 0; x < width; ++x)
-            if (x < ax || x >= ax + art)
-            {
-                const Rgb c = unpack(out[y * width + (x < ax ? ax : ax + art - 1)]);
-                out[y * width + x] = pack(c.r * .5f, c.g * .5f, c.b * .5f);
-            }
 }
 
 CoverLoader::CoverLoader()
@@ -238,31 +232,45 @@ void CoverLoader::work()
         result->key = req.key;
         result->width = req.width;
         result->height = req.height;
-        std::string bytes;
-        bool got = elf_get(fs_url("/api/fs/download?path=", req.path), bytes, 12u << 20) && !bytes.empty();
+        // The console's 3840x2160 key art (pic0.png, up to ~16 MB) needs the large decoder (Estante reads it the
+        // same way, one at a time); everything else is a small cover file.
+        auto large = [](const std::string &p) { return p.size() > 8 && p.compare(p.size() - 8, 8, "pic0.png") == 0; };
+        std::string bytes, used = req.path;
+        bool got = elf_get(fs_url("/api/fs/download?path=", req.path), bytes, large(req.path) ? 32u << 20 : 12u << 20) &&
+                   !bytes.empty();
         if (!got && !req.fallback.empty())
         {
+            used = req.fallback;
             got = elf_get(fs_url("/api/fs/download?path=", req.fallback), bytes, 12u << 20) && !bytes.empty();
             req.square = true;
         }
+        int ix, iy, iw, ih;
+        frame_inner(req.system, req.width, req.height, ix, iy, iw, ih);
+        std::vector<std::uint32_t> art(static_cast<std::size_t>(iw) * static_cast<std::size_t>(ih));
+        bool ok = false;
         if (got)
         {
             const auto *data = reinterpret_cast<const unsigned char *>(bytes.data());
-            result->pixels.resize(static_cast<std::size_t>(req.width) * static_cast<std::size_t>(req.height));
-            if (req.square)
+            if (large(used))
+                ok = decode_cover_rect_large(data, bytes.size(), art.data(), static_cast<unsigned>(iw),
+                                             static_cast<unsigned>(ih));
+            else if (req.square)
             {
                 constexpr int kEdge = 512;
                 std::vector<std::uint32_t> icon(kEdge * kEdge);
-                if (!decode_cover_rect(data, bytes.size(), icon.data(), kEdge, kEdge))
-                    result->failed = true;
-                else if (req.system == data::System::media) // apps: covers.js iconFront
-                    compose_icon_cover(icon.data(), kEdge, req.system, req.width, req.height, result->pixels.data());
-                else
-                    compose_square_cover(icon.data(), kEdge, req.system, req.width, req.height, result->pixels.data());
+                ok = decode_cover_rect(data, bytes.size(), icon.data(), kEdge, kEdge);
+                if (ok && req.system == data::System::media) // apps: covers.js iconFront
+                    compose_icon_cover(icon.data(), kEdge, req.system, iw, ih, art.data());
+                else if (ok) // a game with only square art: it fills the face (lesson 2: never small)
+                    fill_square(icon.data(), kEdge, iw, ih, art.data());
             }
-            else if (!decode_cover_rect(data, bytes.size(), result->pixels.data(), static_cast<unsigned>(req.width),
-                                        static_cast<unsigned>(req.height)))
-                result->failed = true;
+            else
+                ok = decode_cover_rect(data, bytes.size(), art.data(), static_cast<unsigned>(iw), static_cast<unsigned>(ih));
+        }
+        if (ok)
+        {
+            result->pixels.resize(static_cast<std::size_t>(req.width) * static_cast<std::size_t>(req.height));
+            frame_cover(req.system, art.data(), iw, ih, result->pixels.data(), req.width, req.height);
         }
         else
             result->failed = true;

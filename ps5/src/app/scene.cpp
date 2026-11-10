@@ -503,20 +503,25 @@ std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item)
     if (it == covers_.end())
     {
         const auto spec = data::cover_spec(st, 140);
-        std::vector<std::uint32_t> px(static_cast<std::size_t>(spec.width * spec.height));
+        int ix, iy, iw, ih;
+        frame_inner(item.system, spec.width, spec.height, ix, iy, iw, ih);
+        std::vector<std::uint32_t> inner(static_cast<std::size_t>(iw * ih));
         const Color top = hsl(static_cast<float>(item.hue), 55, 46), bottom = hsl(static_cast<float>(item.hue) + 40, 60, 16);
         const Color band = rgb(st.band.bg);
-        for (int y = 0; y < spec.height; ++y)
+        const int band_h = st.has_band ? static_cast<int>(std::lround(ih * 0.085)) : 0;
+        for (int y = 0; y < ih; ++y)
         {
-            const float t = static_cast<float>(y) / static_cast<float>(spec.height);
+            const float t = static_cast<float>(y) / static_cast<float>(ih);
             Color c = hui::gfx::mix(top, bottom, t);
-            if (y < spec.band_height)
+            if (y < band_h)
                 c = band;
             const auto r = static_cast<std::uint32_t>(c.r * 255), g = static_cast<std::uint32_t>(c.g * 255),
                        b = static_cast<std::uint32_t>(c.b * 255);
-            for (int x = 0; x < spec.width; ++x)
-                px[static_cast<std::size_t>(y * spec.width + x)] = 0xff000000u | (b << 16) | (g << 8) | r;
+            for (int x = 0; x < iw; ++x)
+                inner[static_cast<std::size_t>(y * iw + x)] = 0xff000000u | (b << 16) | (g << 8) | r;
         }
+        std::vector<std::uint32_t> px(static_cast<std::size_t>(spec.width * spec.height));
+        frame_cover(item.system, inner.data(), iw, ih, px.data(), spec.width, spec.height);
         cover_size_[key] = spec.width;
         it = covers_.emplace(key, std::move(px)).first;
     }
@@ -576,28 +581,10 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             r.fade_length = bh * .42f;
             canvas.case3d(r);
         }
+        // setup.css gives the selected face a faint inner glow (inset 0 0 22px -4px --glow); drawn flat over a face in
+        // perspective it read as a crooked frame on the TV (owner, 2026-11-10), so it is left out until it can be
+        // drawn inside the 3D pass. The halo and the lift still show the selection.
         canvas.case3d(op);
-        if (is_sel)
-        {
-            // setup.css: .slot.sel .f-front{box-shadow: inset 0 0 calc(22px*OS) calc(-4px*OS) var(--glow)} (no white
-            // rim). The face is drawn as a soft band of the game's glow inside each edge of the projected front.
-            float px[4], py[4];
-            const float cs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
-            for (int k = 0; k < 4; ++k)
-            {
-                const V3 p = rotate_y({cs[k][0] * bw * .5f, cs[k][1] * bh * .5f, bd * .5f}, ry);
-                project({kTrackX + x + p.x, kTrackY + p.y, z + p.z}, px[k], py[k]);
-            }
-            const Color g = hsl(static_cast<float>(item.hue), 90, 62, .5f * alpha);
-            const float band = 22.0f * 1.4f * .5f; // blur radius / 2 past the -4px spread
-            const float l = std::max(px[0], px[3]), r = std::min(px[1], px[2]);
-            const float t = std::max(py[0], py[1]), b = std::min(py[2], py[3]);
-            auto &hud = canvas.list();
-            hud.gradient_rect_h({l, t, band, b - t}, 0, g, transparent(g));
-            hud.gradient_rect_h({r - band, t, band, b - t}, 0, transparent(g), g);
-            hud.gradient_rect({l, t, r - l, band}, 0, g, transparent(g));
-            hud.gradient_rect({l, b - band, r - l, band}, 0, transparent(g), g);
-        }
     }
 }
 

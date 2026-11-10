@@ -37,11 +37,16 @@ struct CoverPixels
 void compose_icon_cover(const std::uint32_t *icon, int edge, data::System system, int width, int height,
                         std::uint32_t *out);
 
-// A game whose only art is square (Switch icons, PS5/PS4 icon0): the system band on top, the art at the full width
-// of the face right under it, and the rest of the face continuing the art's own colours (its last rows, blurred and
-// darkened), so the picture fills the case instead of sitting small in the middle (PS5-PORT.md lesson 2).
-void compose_square_cover(const std::uint32_t *icon, int edge, data::System system, int width, int height,
-                          std::uint32_t *out);
+// The case's front as Boxshelf draws it (style.css .f-front): the plastic frame `edge` wide in the case colour (no
+// frame on the spine side of a wrap-around cover), the picture inside it, and the clear plastic's fixed shading:
+// a soft rim light along the top and a faint darkening at the far edges (.f-front::after). `art` is inner_w x
+// inner_h (see frame_inner()); out is width x height.
+void frame_cover(data::System system, const std::uint32_t *art, int inner_w, int inner_h, std::uint32_t *out,
+                 int width, int height);
+// The picture area inside the frame for a face of width x height.
+void frame_inner(data::System system, int width, int height, int &x, int &y, int &inner_w, int &inner_h);
+// Square art cropped to fill a face (no band, no blur): used when no box art exists (Switch icons, 3DS icons).
+void fill_square(const std::uint32_t *icon, int edge, int width, int height, std::uint32_t *out);
 
 class CoverLoader
 {

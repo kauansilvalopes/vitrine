@@ -227,6 +227,14 @@ bool CoverIndex::resolve(Game &g) const
     case System::ps5:
     case System::ps4:
     case System::custom:
+        // The square store icon (it carries the title logo) cropped to fill the face. The 3840x2160 key art
+        // (pic0.png) was tried: cropped to a case it is often a meaningless close-up (owner's library, 2026-11-10).
+        if (!g.app.empty())
+        {
+            g.cover_front = "/user/appmeta/" + g.app + "/icon0.png";
+            g.cover_square = true;
+        }
+        break;
     case System::media:
         if (!g.app.empty())
         {
