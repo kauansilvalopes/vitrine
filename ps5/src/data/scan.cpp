@@ -240,6 +240,39 @@ std::string make_game_id(System system, std::string_view path)
     return buffer;
 }
 
+bool same_title(std::string_view a, std::string_view b)
+{
+    std::size_t i = 0, j = 0;
+    auto next = [](std::string_view s, std::size_t &k) -> int
+    {
+        while (k < s.size())
+        {
+            const auto c = static_cast<unsigned char>(s[k++]);
+            if (std::isalnum(c))
+                return std::tolower(c);
+            if (c >= 0x80)
+                return c;
+        }
+        return -1;
+    };
+    for (;;)
+    {
+        const int x = next(a, i), y = next(b, j);
+        if (x != y)
+            return false;
+        if (x < 0)
+            return true;
+    }
+}
+
+bool meaningless(std::string_view title)
+{
+    std::size_t hex = 0;
+    for (char c : title)
+        hex += std::isxdigit(static_cast<unsigned char>(c)) != 0;
+    return title.size() < 3 || (title.size() >= 8 && hex == title.size());
+}
+
 std::string_view emulator_app(System system) noexcept
 {
     switch (system)
@@ -347,8 +380,11 @@ std::vector<Root> roots_from_ps5sx2_ini(std::string_view ini)
 std::vector<Root> roots_from_swanstation_ini(std::string_view ini)
 {
     std::vector<Root> roots;
-    const std::string folder = ini_value(ini, {}, "usb_folder");
-    if (folder.empty() || folder.find('/') != std::string::npos || folder == "." || folder == "..")
+    // A folder name or a relative path under the drive ("Emulation/roms/psx" on the owner's console).
+    std::string folder = ini_value(ini, {}, "usb_folder");
+    while (!folder.empty() && folder.back() == '/')
+        folder.pop_back();
+    if (folder.empty() || folder[0] == '/' || folder == "." || folder.find("..") != std::string::npos)
         return roots;
     for (int usb = 0; usb <= 2; ++usb)
         roots.push_back({"/mnt/usb" + std::to_string(usb) + "/" + folder, System::psx, RootKind::folders, false});

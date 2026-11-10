@@ -2,6 +2,7 @@
 #include "app/library_loader.hpp"
 
 #include "app/elf_client.hpp"
+#include "data/cover_index.hpp"
 #include "data/scan.hpp"
 #include "platform/ps5/system.hpp"
 
@@ -72,6 +73,30 @@ void LibraryLoader::work()
             games.push_back(std::move(g));
     }
     hui::sys::log("[BOXSHELF] library: %d roots listed, %zu games", listed, games.size());
+
+    // Box art the emulators already keep on the console (data/cover_index.hpp).
+    status_ = "Matching box art";
+    CoverIndex index;
+    auto download = [&](const char *path) { return elf_get(fs_url("/api/fs/download?path=", path), body) ? body : std::string(); };
+    index.add_swan_serials(download("/data/SwanStationPS5/cache/serials.tsv"));
+    index.add_ps2_serials(download("/data/PCSX2/chd-serials.txt"));
+    index.add_ps2_titles(download("/data/homebrew/PPSA99841/assets/ps2-titles.tsv"));
+    index.add_porpoise_cache(download("/data/porpoise/disc-cache.tsv"));
+    index.add_ecam_library(download("/data/ps5cemu/library.json"));
+    {
+        std::vector<DirEntry> eden;
+        if (elf_get(fs_url("/api/fs/list?path=", "/data/prosperoeden/covers"), body) && parse_fs_list(body, eden))
+            for (const auto &e : eden)
+                if (e.name.size() > 5 && e.name.compare(e.name.size() - 5, 5, ".name") == 0)
+                {
+                    const std::string hash = e.name.substr(0, e.name.size() - 5);
+                    index.add_eden_name(hash, download(("/data/prosperoeden/covers/" + e.name).c_str()));
+                }
+    }
+    int covered = 0;
+    for (auto &g : games)
+        covered += index.resolve(g);
+    hui::sys::log("[BOXSHELF] library: box art matched for %d of %zu games", covered, games.size());
     std::vector<Shelf> shelves;
     for (const auto &s : build_shelves(games))
     {

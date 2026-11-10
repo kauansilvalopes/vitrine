@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #ifndef BOXSHELF_HOST_PREVIEW
@@ -40,10 +41,35 @@ std::string fs_url(std::string_view endpoint, std::string_view path)
 }
 
 #ifdef BOXSHELF_HOST_PREVIEW
-bool elf_get(const std::string &, std::string &body, std::size_t)
+// The PC preview has no console: "/api/fs/download?path=/x/y" reads $BOXSHELF_CONSOLE_DIR/x/y when that variable
+// names a folder of files copied from the console (kept in .local/, never committed); anything else fails.
+bool elf_get(const std::string &path, std::string &body, std::size_t max_bytes)
 {
     body.clear();
-    return false; // the PC preview has no console to ask
+    const char *root = std::getenv("BOXSHELF_CONSOLE_DIR");
+    const std::string prefix = "/api/fs/download?path=";
+    if (!root || path.compare(0, prefix.size(), prefix) != 0)
+        return false;
+    std::string file = root;
+    for (std::size_t i = prefix.size(); i < path.size(); ++i)
+    {
+        if (path[i] == '%' && i + 2 < path.size())
+        {
+            file += static_cast<char>(std::strtol(path.substr(i + 1, 2).c_str(), nullptr, 16));
+            i += 2;
+        }
+        else
+            file += path[i];
+    }
+    FILE *f = std::fopen(file.c_str(), "rb");
+    if (!f)
+        return false;
+    char chunk[16384];
+    std::size_t n;
+    while ((n = std::fread(chunk, 1, sizeof chunk, f)) > 0 && body.size() < max_bytes)
+        body.append(chunk, n);
+    std::fclose(f);
+    return true;
 }
 #else
 namespace

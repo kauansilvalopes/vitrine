@@ -3,6 +3,7 @@
 // canvas in CSS pixels; the console and the PC preview run the same code. SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "app/cover_loader.hpp"
 #include "app/css.hpp"
 #include "app/shelf.hpp"
 #include "core/held_step.hpp"
@@ -41,6 +42,11 @@ class ShelfScreen
         return model_;
     }
     void settle(double now); // jumps every animation to its end
+    // Covers asked for and not back yet (the preview waits for them).
+    int covers_pending() const
+    {
+        return covers_pending_;
+    }
 
   private:
     struct Slot
@@ -69,6 +75,7 @@ class ShelfScreen
     void draw_letter_flash(hui::gfx::DrawList &list, double now);
     void draw_empty(hui::gfx::DrawList &list);
     std::uint32_t cover_texture(GlCanvas &canvas, const Item &item);
+    void update_covers(GlCanvas &canvas);
 
     ShelfModel model_;
     std::string status_ = "Looking for your games";
@@ -85,5 +92,14 @@ class ShelfScreen
     hui::HeldStep systems_{hui::Action::jump_prev, hui::Action::jump_next};  // L2 / R2
     std::unordered_map<std::string, std::vector<std::uint32_t>> covers_;     // placeholder covers by item key
     std::unordered_map<std::string, int> cover_size_;                        // width per key (height = w / ratio)
+    // Real box art: the loader thread, the decoded covers by game id, and those not found.
+    CoverLoader loader_;
+    std::unordered_map<std::string, std::unique_ptr<CoverPixels>> art_;
+    std::vector<std::string> art_new_; // decoded but not uploaded yet (the canvas must not reuse a stale texture)
+    std::vector<std::string> art_missing_;
+    std::string wish_;
+    int covers_pending_ = 0;
+    // Decoded covers kept (0.5-0.8 MB each at 360 px wide, plus the same again as a GPU texture); Estante keeps ~24.
+    static constexpr std::size_t kMaxCovers = 32;
 };
 } // namespace boxshelf::app

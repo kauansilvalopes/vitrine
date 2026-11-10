@@ -415,8 +415,86 @@ void ShelfScreen::draw_floor_and_halo(DrawList &list, double now)
 
 // ---- cases ------------------------------------------------------------------------------------------------------
 
+void ShelfScreen::update_covers(GlCanvas &canvas)
+{
+    // Finished decodes come in; failed ones are remembered so the placeholder stays.
+    for (auto &c : loader_.take())
+    {
+        if (c->failed || c->pixels.empty())
+        {
+            art_missing_.push_back(c->key);
+            continue;
+        }
+        art_new_.push_back(c->key);
+        art_[c->key] = std::move(c);
+    }
+    // The wish list: real covers of the cases in view, nearest the selection first.
+    const auto &shelf = model_.cur();
+    const int sel = model_.selected(), n = static_cast<int>(shelf.items.size());
+    std::vector<CoverRequest> wish;
+    std::string sig;
+    for (int d = 0; d <= kWindow - 2; ++d)
+        for (int i : {sel - d, sel + d})
+        {
+            if (i < 0 || i >= n || (d == 0 && i != sel) || (d > 0 && i == sel))
+                continue;
+            const Item &it = shelf.items[static_cast<std::size_t>(i)];
+            const auto &g = it.game;
+            if (it.kind != ItemKind::game || g.cover_front.empty() || art_.count(g.id) ||
+                std::find(art_missing_.begin(), art_missing_.end(), g.id) != art_missing_.end())
+                continue;
+            const auto spec = data::cover_spec(data::style(it.system), 360);
+            wish.push_back({g.id, g.cover_front, it.system, g.cover_square, spec.width, spec.height, g.cover_fallback});
+            sig += g.id;
+            if (d == 0)
+                break;
+        }
+    covers_pending_ = static_cast<int>(wish.size());
+    if (sig != wish_)
+    {
+        wish_ = sig;
+        loader_.want(std::move(wish));
+    }
+    // Memory: keep the covers nearest the selection.
+    if (art_.size() > kMaxCovers)
+    {
+        std::vector<std::pair<int, std::string>> far;
+        for (const auto &[key, px] : art_)
+        {
+            int dist = 1 << 20;
+            for (int i = 0; i < n; ++i)
+                if (shelf.items[static_cast<std::size_t>(i)].game.id == key)
+                    dist = std::abs(i - sel);
+            far.emplace_back(dist, key);
+        }
+        std::sort(far.begin(), far.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+        for (std::size_t k = 0; art_.size() > kMaxCovers && k < far.size(); ++k)
+        {
+            canvas.invalidate(art_[far[k].second]->pixels.data());
+            art_.erase(far[k].second);
+            loader_.forget(far[k].second);
+        }
+    }
+}
+
 std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item)
 {
+    if (item.kind == ItemKind::game && !item.game.id.empty())
+    {
+        const auto it = art_.find(item.game.id);
+        if (it != art_.end())
+        {
+            auto &c = *it->second;
+            const auto fresh = std::find(art_new_.begin(), art_new_.end(), item.game.id);
+            if (fresh != art_new_.end())
+            {
+                // a new buffer may sit where a dropped one was: make the canvas upload it again
+                canvas.invalidate(c.pixels.data());
+                art_new_.erase(fresh);
+            }
+            return canvas.texture_for(c.pixels.data(), static_cast<unsigned>(c.width), static_cast<unsigned>(c.height));
+        }
+    }
     // Placeholder front until the cover pipeline lands (P3): the style's band over a wash in the game's hue, at the
     // system's own proportions (covers.js drawFront geometry). Kept per item; the canvas caches the texture.
     const auto &st = data::style(item.system);
@@ -457,6 +535,7 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     const float bw = size.w, bh = size.h, bd = size.d;
     const int sel = model_.selected();
     canvas.set_camera(kPerspective, kTrackX, kTrackY);
+    update_covers(canvas);
 
     // Back to front: the farthest cases first, the selected one last.
     std::vector<int> order;

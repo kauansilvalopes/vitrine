@@ -42,7 +42,12 @@ struct Game
     std::string path;      // file or folder on the console
     std::string app;       // title id of the PS5 app that runs it (emulator), or the game's own title id
     std::string disc_id;   // GameCube/Wii disc id or PS1/PS2 serial when known
+    std::string region;    // "USA", "EUR"... when the emulator knows it
     bool folder = false;
+    // Box art already on the console (see data/cover_index.hpp); empty when none.
+    std::string cover_front, cover_back, cover_spine;
+    bool cover_square = false; // an icon, not box art: composed into the system's cover style
+    std::string cover_fallback; // a square icon to compose when cover_front cannot be read
 };
 
 // ---- rules ----
@@ -56,6 +61,10 @@ System gc_or_wii_from_disc_id(std::string_view disc_id) noexcept;
 // is_file = false for a folder name: nothing after its last dot is taken for an extension.
 std::string clean_title(std::string_view name, bool is_file = true);
 std::string make_game_id(System system, std::string_view path);
+// Estante's same_title(): equal but for punctuation, spacing and case ("Bowsers Fury" == "Bowser's Fury").
+bool same_title(std::string_view a, std::string_view b);
+// Estante's meaningless_title(): shorter than 3, or 8+ characters of only hex digits.
+bool meaningless(std::string_view title);
 // Title id of the PS5 emulator app for a system (PS5-PORT.md section 5); empty when none.
 std::string_view emulator_app(System system) noexcept;
 

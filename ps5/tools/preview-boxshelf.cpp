@@ -14,6 +14,12 @@
 #include <EGL/eglext.h>
 #include <GL/glcorearb.h>
 
+#include "data/cover_index.hpp"
+
+#include <unistd.h>
+
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -150,6 +156,83 @@ boxshelf::app::ShelfModel demo_library(bool with_empty)
     return model;
 }
 
+std::string slurp(const std::string &path)
+{
+    std::string out;
+    hui::save::read_file(path.c_str(), &out);
+    return out;
+}
+
+std::string escape_path(const std::string &path) // tools/fetch-listings.py escape()
+{
+    std::string out;
+    char hex[4];
+    for (unsigned char c : path)
+    {
+        if (c == '/')
+            out += '_';
+        else if (std::isalnum(c) || c == '.' || c == '-')
+            out += static_cast<char>(c);
+        else
+            std::snprintf(hex, sizeof hex, "%%%02X", c), out += hex;
+    }
+    return out;
+}
+
+// The owner's real library from the listings tools/fetch-listings.py saved (.local/listings), resolved with the
+// same cover index the console uses. Only file names and paths; the covers themselves come from
+// $BOXSHELF_CONSOLE_DIR when present.
+boxshelf::app::ShelfModel real_library(const std::string &dir)
+{
+    using namespace boxshelf::data;
+    std::vector<Game> games = games_from_appdb(slurp(dir + "/appdb.json"));
+    auto roots = default_roots();
+    for (auto &r : roots_from_ps5cemu_json(slurp(dir + "/config/ps5cemu.json")))
+        roots.push_back(r);
+    for (auto &r : roots_from_swanstation_ini(slurp(dir + "/config/SwanStationPS5.ini")))
+        roots.push_back(r);
+    std::vector<std::string> seen;
+    for (const auto &root : roots)
+    {
+        if (std::find(seen.begin(), seen.end(), root.path) != seen.end())
+            continue;
+        seen.push_back(root.path);
+        std::vector<DirEntry> entries;
+        if (parse_fs_list(slurp(dir + "/fs/" + escape_path(root.path) + ".json"), entries))
+            for (auto &g : scan_listing(root, entries))
+                games.push_back(std::move(g));
+    }
+    CoverIndex index;
+    index.add_swan_serials(slurp(dir + "/config/swan-serials.tsv"));
+    index.add_ps2_serials(slurp(dir + "/config/ps2-serials.txt"));
+    index.add_ps2_titles(slurp(dir + "/config/ps2-titles.tsv"));
+    index.add_porpoise_cache(slurp(dir + "/config/porpoise-disc-cache.tsv"));
+    index.add_ecam_library(slurp(dir + "/config/ecam-library.json"));
+    std::vector<DirEntry> eden;
+    parse_fs_list(slurp(dir + "/fs/" + escape_path("/data/prosperoeden/covers") + ".json"), eden);
+    for (const auto &e : eden)
+        if (e.name.size() > 5 && e.name.compare(e.name.size() - 5, 5, ".name") == 0)
+            index.add_eden_name(e.name.substr(0, e.name.size() - 5), slurp(dir + "/eden/" + e.name));
+    for (auto &g : games)
+        index.resolve(g);
+    std::vector<std::string> installed;
+    for (const auto &g : games)
+        if (!g.app.empty())
+            installed.push_back(g.app);
+    std::vector<boxshelf::app::Shelf> shelves;
+    for (const auto &s : build_shelves(games))
+    {
+        if (s.system == System::home)
+            continue;
+        const auto app = emulator_app(s.system);
+        shelves.push_back(boxshelf::app::prepare_shelf(
+            s, !app.empty() && std::find(installed.begin(), installed.end(), app) != installed.end()));
+    }
+    boxshelf::app::ShelfModel model;
+    model.set(std::move(shelves));
+    return model;
+}
+
 int shelf_of(const boxshelf::app::ShelfModel &m, boxshelf::data::System s)
 {
     for (int i = 0; i < m.shelf_count(); ++i)
@@ -187,6 +270,34 @@ int main(int argc, char **argv)
     {
         screen.set_status("Looking through your game folders");
         host.render(screen, 5.0);
+        return host.write_ppm(argv[1]) ? 0 : 3;
+    }
+    if (mode.rfind("real-", 0) == 0)
+    {
+        // real-<system key>[-<index>]: the owner's library (paths only), covers from $BOXSHELF_CONSOLE_DIR
+        std::string key = mode.substr(5);
+        int pick = 4;
+        if (const auto dash = key.find('-'); dash != std::string::npos)
+            pick = std::atoi(key.c_str() + dash + 1), key = key.substr(0, dash);
+        const System sys = boxshelf::data::system_from_key(key);
+        screen.set_library(real_library(".local/listings"), 0.0);
+        auto &m = screen.model();
+        if (m.empty())
+            return 5;
+        for (int k = 0; k < m.shelf_count() && m.cur().system != sys; ++k)
+            m.switch_shelf(1);
+        m.go(pick);
+        double now = 5.0;
+        screen.settle(now);
+        // frames until the cover thread has brought every cover in view (or 4 s)
+        for (int frame = 0; frame < 240; ++frame)
+        {
+            host.render(screen, now);
+            if (frame > 2 && screen.covers_pending() == 0)
+                break;
+            usleep(16000);
+        }
+        host.render(screen, now + 1.7);
         return host.write_ppm(argv[1]) ? 0 : 3;
     }
     auto model = demo_library(mode == "empty-shelf");

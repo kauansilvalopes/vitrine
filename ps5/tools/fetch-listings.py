@@ -18,7 +18,17 @@ CONFIGS = {
     "SwanStationPS5.ini": "/data/SwanStationPS5/SwanStationPS5.ini",
     "prosperoeden.json": "/data/prosperoeden/config/prosperoeden.json",
     "porpoise-disc-cache.tsv": "/data/porpoise/disc-cache.tsv",
+    # cover index (src/data/cover_index.hpp)
+    "swan-serials.tsv": "/data/SwanStationPS5/cache/serials.tsv",
+    "ps2-serials.txt": "/data/PCSX2/chd-serials.txt",
+    "ps2-titles.tsv": "/data/homebrew/PPSA99841/assets/ps2-titles.tsv",
+    "ecam-library.json": "/data/ps5cemu/library.json",
 }
+# Folders whose listing tells which cover files exist.
+COVER_DIRS = [
+    "/data/SwanStationPS5/covers/default", "/data/PCSX2/covers", "/data/porpoise/covers",
+    "/data/prosperoeden/covers", "/data/ps5cemu/covers/boxart/3ds", "/data/ps5cemu/covers/3ds", "/user/appmeta",
+]
 
 
 def escape(path: str) -> str:
@@ -61,6 +71,27 @@ def main() -> int:
         print(f"config {remote}: {'saved' if body is not None else 'not found'}")
         if body is not None:
             (out / "config" / name).write_bytes(body)
+
+    import json
+    (out / "eden").mkdir(exist_ok=True)
+    for folder in COVER_DIRS:
+        body = get(args.host, "/api/fs/list?path=" + urllib.parse.quote(folder))
+        print(f"covers {folder}: {'ok' if body is not None else '-'}")
+        if body is None:
+            continue
+        (out / "fs" / (escape(folder) + ".json")).write_bytes(body)
+        if folder == "/data/prosperoeden/covers":
+            for entry in json.loads(body).get("entries", []):
+                name = entry.get("name", "")
+                if name.endswith(".name"):
+                    text = get(args.host, "/api/fs/download?path=" + urllib.parse.quote(f"{folder}/{name}"))
+                    if text is not None:
+                        (out / "eden" / name).write_bytes(text)
+    for title_id in [t.get("titleId", "") for t in json.loads(appdb).get("titles", [])]:
+        if title_id[:4] in ("PPSA", "CUSA"):
+            body = get(args.host, "/api/fs/list?path=" + urllib.parse.quote(f"/user/appmeta/{title_id}"))
+            if body is not None:
+                (out / "fs" / (escape(f"/user/appmeta/{title_id}") + ".json")).write_bytes(body)
 
     roots = subprocess.run([args.tool, "--roots", str(out)], capture_output=True, text=True, check=True)
     for root in roots.stdout.splitlines():

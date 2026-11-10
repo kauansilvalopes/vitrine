@@ -5,6 +5,7 @@
 //   list-library <dir>           print the shelves built from <dir>/appdb.json and <dir>/fs/<escaped root>.json
 //
 // <dir> is filled by tools/fetch-listings.py (read-only HTTP GETs to Elf Arsenal).
+#include "data/cover_index.hpp"
 #include "data/scan.hpp"
 
 #include <cctype>
@@ -66,12 +67,13 @@ int main(int argc, char **argv)
             std::printf("%s\n", r.path.c_str());
         return 0;
     }
-    if (argc != 2)
+    const bool covers_only = argc == 3 && std::string(argv[1]) == "--covers";
+    if (argc != 2 && !covers_only)
     {
-        std::fprintf(stderr, "usage: %s [--roots] <listings dir>\n", argv[0]);
+        std::fprintf(stderr, "usage: %s [--roots|--covers] <listings dir>\n", argv[0]);
         return 2;
     }
-    const std::string dir = argv[1];
+    const std::string dir = argv[covers_only ? 2 : 1];
     std::vector<Game> games = games_from_appdb(read(dir + "/appdb.json"));
     int listed = 0;
     for (const auto &root : all_roots(dir))
@@ -83,15 +85,67 @@ int main(int argc, char **argv)
         for (auto &g : scan_listing(root, entries))
             games.push_back(std::move(g));
     }
-    std::printf("roots listed: %d\n", listed);
+    if (!covers_only)
+        std::printf("roots listed: %d\n", listed);
+
+    // Cover index (the same files the console app reads) and the cover folders' listings, to tell which exist.
+    CoverIndex index;
+    index.add_swan_serials(read(dir + "/config/swan-serials.tsv"));
+    index.add_ps2_serials(read(dir + "/config/ps2-serials.txt"));
+    index.add_ps2_titles(read(dir + "/config/ps2-titles.tsv"));
+    index.add_porpoise_cache(read(dir + "/config/porpoise-disc-cache.tsv"));
+    index.add_ecam_library(read(dir + "/config/ecam-library.json"));
+    {
+        std::vector<DirEntry> eden;
+        parse_fs_list(read(dir + "/fs/" + escape("/data/prosperoeden/covers") + ".json"), eden);
+        for (const auto &e : eden)
+            if (e.name.size() > 5 && e.name.substr(e.name.size() - 5) == ".name")
+                index.add_eden_name(e.name.substr(0, e.name.size() - 5), read(dir + "/eden/" + e.name));
+    }
+    auto exists = [&](const std::string &path)
+    {
+        const auto slash = path.rfind('/');
+        std::vector<DirEntry> entries;
+        if (slash == std::string::npos ||
+            !parse_fs_list(read(dir + "/fs/" + escape(path.substr(0, slash)) + ".json"), entries))
+            return false;
+        const std::string leaf = path.substr(slash + 1);
+        for (const auto &e : entries)
+            if (e.name == leaf)
+                return true;
+        return false;
+    };
+    int total = 0, with_cover = 0;
+    for (auto &g : games)
+        index.resolve(g);
+    if (covers_only)
+    {
+        for (const auto &g : games)
+            for (const auto *p : {&g.cover_front, &g.cover_back, &g.cover_spine, &g.cover_fallback})
+                if (!p->empty() && exists(*p))
+                    std::printf("%s\t%s\n", std::string(style(g.system).key).c_str(), p->c_str());
+        return 0;
+    }
     for (const auto &shelf : build_shelves(games))
     {
         const auto &s = style(shelf.system);
-        std::printf("\n== %s (%s) - %zu  case %.3f x depth %.3f, colour #%06x, spine \"%.*s\"\n",
-                    std::string(s.word).c_str(), std::string(s.key).c_str(), shelf.games.size(), s.ratio, s.depth,
-                    s.case_color, static_cast<int>(s.spine_band.label.size()), s.spine_band.label.data());
+        int found = 0;
         for (const auto &g : shelf.games)
-            std::printf("   %-48s %s%s\n", g.title.c_str(), g.path.c_str(), g.folder ? "/" : "");
+            found += (!g.cover_front.empty() && exists(g.cover_front)) || (!g.cover_fallback.empty() && exists(g.cover_fallback));
+        total += static_cast<int>(shelf.games.size());
+        with_cover += found;
+        std::printf("\n== %s (%s) - %zu  covers %d/%zu  case %.3f x depth %.3f, colour #%06x, spine \"%.*s\"\n",
+                    std::string(s.word).c_str(), std::string(s.key).c_str(), shelf.games.size(), found,
+                    shelf.games.size(), s.ratio, s.depth, s.case_color, static_cast<int>(s.spine_band.label.size()),
+                    s.spine_band.label.data());
+        for (const auto &g : shelf.games)
+        {
+            const bool ok = (!g.cover_front.empty() && exists(g.cover_front)) ||
+                            (!g.cover_fallback.empty() && exists(g.cover_fallback));
+            std::printf("   %s %-48s %s%s%s\n", ok ? "[art]" : "[ - ]", g.title.c_str(), g.path.c_str(),
+                        g.folder ? "/" : "", g.cover_square ? "  (square icon)" : "");
+        }
     }
+    std::printf("\ncovers found: %d of %d games\n", with_cover, total);
     return 0;
 }

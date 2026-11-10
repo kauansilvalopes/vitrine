@@ -35,7 +35,7 @@ echo '{"entries":[{"name":"Pocket Quest (Europe).3ds","dir":false}]}' > "$fx/fs/
 echo '{"gamesFolder":"/mnt/usb1/Cemu Games"}' > "$fx/config/ps5cemu.json"
 echo '{"entries":[{"name":"Island Party","dir":true}]}' > "$fx/fs/_mnt_usb1_Cemu%20Games.json"
 out=$(build/tools/list-library "$fx")
-for want in "roots listed: 4" "Alpha" "Cart Racer" "Pocket Quest" "Island Party" "Some PS5 Game" "Estante" \
+for want in "covers found:" "roots listed: 4" "Alpha" "Cart Racer" "Pocket Quest" "Island Party" "Some PS5 Game" "Estante" \
             "case 1.127" "spine \"3DS\""; do
   grep -qF -- "$want" <<<"$out" || { echo "list-library: missing '$want'"; echo "$out"; exit 1; }
 done

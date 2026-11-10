@@ -1,5 +1,6 @@
 // Boxshelf PS5 - host unit tests for the data layer (src/data). SPDX-License-Identifier: GPL-3.0-or-later
 // Game names below are made up; no real titles are needed to test the rules.
+#include "data/cover_index.hpp"
 #include "data/covers.hpp"
 #include "data/scan.hpp"
 #include "data/systems.hpp"
@@ -129,6 +130,9 @@ static void test_roots()
     CHECK_EQ(swan.size(), 3u);
     CHECK(!swan.empty() && swan[0].path == "/mnt/usb0/PS1" && swan[0].kind == RootKind::folders);
     CHECK(roots_from_swanstation_ini("usb_folder=../etc\n").empty());
+    CHECK(roots_from_swanstation_ini("usb_folder=/abs\n").empty());
+    const auto sub = roots_from_swanstation_ini("usb_folder=Emulation/roms/psx\n"); // the owner's real setting
+    CHECK(!sub.empty() && sub[0].path == "/mnt/usb0/Emulation/roms/psx");
 }
 
 static void test_listing()
@@ -206,6 +210,71 @@ static void test_appdb_and_shelves()
     CHECK(has_ps4);  // has a game
 }
 
+static Game game(System s, const char *path, const char *title, bool folder = false)
+{
+    Game g;
+    g.system = s;
+    g.path = path;
+    g.title = title;
+    g.folder = folder;
+    return g;
+}
+
+static void test_cover_index()
+{
+    CoverIndex ix;
+    // the emulators' caches name older homes of the same files: games match on the file / folder name
+    ix.add_swan_serials("/mnt/ext1/SwanStationPS5/games/Racer Two (CHD)/racer2.chd\t1\t2\tSLUS-01234\n"
+                        "/x/bad line\n");
+    ix.add_ps2_serials("/mnt/ext1/PCSX2/games/skateworld.chd\t1\t2\tSLUS-20999\n"
+                       "/mnt/ext1/PCSX2/games/Nice Name.chd\t1\t2\tSLES-50001\n");
+    ix.add_ps2_titles("SLUS-20999\tSkate World\nSLES-50001\tNICE NAME (EUROPE)\n");
+    ix.add_porpoise_cache("# Porpoise's disc headers (v2)\n"
+                          "/mnt/ext1/Dolphin/gamecube/Cube Game (USA).iso\t1\t2\t0\tGQQE01\t0\tCube Game\tISO\tGameCube\tUSA\t\t\n"
+                          "/mnt/ext1/Dolphin/wii/Wand Game.iso\t1\t2\t0\tRWWE01\t0\tWand Game\tISO\tWii\tUSA\t\t\n");
+    ix.add_eden_name("abcd1234", "Kart Racer: Deluxe\n");
+    ix.add_ecam_library(R"({"3ds":[{"titleId":"0004000000011100","gameId":"ABCE","name":"Pocket",)"
+                        R"("path":"/mnt/usb0/Emulation/roms/3ds/Pocket (USA).3ds"}],"wiiu":[]})");
+
+    Game p1 = game(System::psx, "/mnt/usb0/Emulation/roms/psx/Racer Two (CHD)", "Racer Two", true);
+    CHECK(ix.resolve(p1));
+    CHECK(p1.disc_id == "SLUS-01234" && p1.cover_front == "/data/SwanStationPS5/covers/default/SLUS-01234.jpg");
+
+    Game p2 = game(System::ps2, "/mnt/usb0/Emulation/roms/ps2/skateworld.chd", "skateworld");
+    CHECK(ix.resolve(p2));
+    CHECK(p2.title == "Skate World"); // squashed file name -> the GameDB title
+    CHECK(p2.cover_front == "/data/PCSX2/covers/SLUS-20999.jpg" && p2.cover_spine == "/data/PCSX2/covers/SLUS-20999_spine.jpg");
+    Game p2b = game(System::ps2, "/mnt/usb0/Emulation/roms/ps2/Nice Name.chd", "Nice Name");
+    CHECK(ix.resolve(p2b) && p2b.title == "Nice Name"); // a readable file name stays
+
+    // Porpoise's own folder mixes systems: the disc says which
+    Game cube = game(System::wii, "/data/porpoise/games/Cube Game (USA).iso", "Cube Game");
+    CHECK(ix.resolve(cube));
+    CHECK(cube.system == System::gc && cube.disc_id == "GQQE01" && cube.region == "USA");
+    CHECK(cube.cover_front == "/data/porpoise/covers/GQQE01.png" && cube.cover_back == "/data/porpoise/covers/GQQE01.back.png");
+    Game wand = game(System::wii, "/mnt/usb0/Emulation/roms/wii/Wand Game.iso", "Wand Game");
+    CHECK(ix.resolve(wand) && wand.system == System::wii);
+
+    Game sw = game(System::sw, "/mnt/usb0/Emulation/eden/roms/Kart Racer Deluxe", "Kart Racer Deluxe", true);
+    CHECK(ix.resolve(sw) && sw.cover_front == "/data/prosperoeden/covers/abcd1234.tga" && sw.cover_square);
+    CHECK(sw.title == "Kart Racer: Deluxe");
+
+    Game ds3 = game(System::n3ds, "/mnt/usb0/Emulation/roms/3ds/Pocket (USA).3ds", "Pocket");
+    CHECK(ix.resolve(ds3) && ds3.cover_front == "/data/ps5cemu/covers/boxart/3ds/ABCE.tga" && !ds3.cover_square);
+    CHECK(ds3.cover_fallback == "/data/ps5cemu/covers/3ds/0004000000011100.tga"); // the icon when the box is missing
+
+    Game ps5 = game(System::ps5, "/appdb/PPSA01234", "Big Game");
+    ps5.app = "PPSA01234";
+    CHECK(ix.resolve(ps5) && ps5.cover_front == "/user/appmeta/PPSA01234/icon0.png" && ps5.cover_square);
+
+    Game none = game(System::ps2, "/mnt/usb0/Emulation/roms/ps2/unknown.iso", "unknown");
+    CHECK(!ix.resolve(none) && none.cover_front.empty());
+
+    CHECK(leaf_key("/a/B c/") == "b c" && parent_key("/x/Games/Folder X/f.chd") == "folder x");
+    CHECK(same_title("Bowsers Fury", "Bowser's Fury") && !same_title("Fury", "Fury 2"));
+    CHECK(meaningless("ab") && meaningless("0123ABCD") && !meaningless("Zelda"));
+}
+
 static void test_covers()
 {
     // covers.js drawFront: W=420, H=round(W/ratio), band = round(H*.085).
@@ -250,6 +319,7 @@ static void test_covers()
 
 int main()
 {
+    test_cover_index();
     test_covers();
     test_styles();
     test_rules();

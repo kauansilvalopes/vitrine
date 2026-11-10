@@ -11,7 +11,8 @@ history. Newest entry at the bottom.
 - [ ] P2 The shelf, 1:1 (scene, top bar with system tabs, backdrop, info, hints, input) — **owner checkpoint on the console**
       — scene/layout/input done and matched against Boxshelf in the PC preview; sort/filter panel, Menu and the
       Spectrum theme's moving layer still to do; **waiting for the console check**
-- [ ] P3 Cases, 1:1 (per-system anatomy) — **owner checkpoint on the console**
+- [ ] P3 Cases, 1:1 (per-system anatomy) — **owner checkpoint on the console** — real covers from the console done
+      (PC preview); spines with band and title, glare, sheen, floor strips, backs still to do
 - [ ] P4 Details / inspect
 - [ ] P5 Museum
 - [ ] P6 Settings, themes, sounds
@@ -239,3 +240,42 @@ Boxshelf (default), or Media? And YouTube on Media (default) rather than PS5?
 
 **Next step:** owner checkpoint on the console (deploy needs his go-ahead). Then the sort/filter panel and the
 Menu, and P3 (case anatomy: real covers, spines with band and title, glare, sheen, floor strips).
+
+## 2026-11-10 — P2 checkpoint + P3 — owner looked on the console; real covers from the console
+**P2 on the console (owner):** the owner deployed it himself (the Claude Code safety classifier refused the FTP
+deploy as "Production Deploy" even with his go-ahead; I gave him the command and did not work around it). He saw
+the shelves with the placeholder covers ("band on top, random colours") and said it looks good: go on.
+Decisions from him: ports (Breath of the Wild, Ocarina 4k) on a Custom shelf; YouTube on Media.
+
+**Done (P3, covers):**
+- `src/data/cover_index.*`: maps each game to box art the emulators already keep on the console (read with
+  Elf Arsenal, GET only): PS1 SwanStation serials → `covers/default/<serial>.jpg`; PS2 `chd-serials.txt` →
+  `covers/<serial>.jpg` (+ spine, back) and, for squashed file names, the title from Estante's `ps2-titles.tsv`
+  on the console; GC/Wii Porpoise `disc-cache.tsv` (v2 columns) → `covers/<id>.png` (+ back, spine), and the
+  disc decides GameCube vs Wii; Switch ProsperoEden `<hash>.name` titles → `<hash>.tga`; 3DS PS5-ECAM
+  `library.json` → `covers/boxart/3ds/<gameId>.tga`, the game icon as fallback; PS5/PS4/apps
+  `/user/appmeta/<id>/icon0.png`. Caches name older homes (/mnt/ext1/...): games match on file / folder name.
+- SwanStation `usb_folder` may be a path ("Emulation/roms/psx", the owner's setting): accepted.
+- `src/app/cover_loader.*`: worker thread downloads, decodes (Estante's stb `decode_cover_rect`) and crops each
+  cover to its system's shape (`cover_spec`, 360 px wide); square art is composed: games get the system band +
+  the art at the full face width + its own colours below (lesson 2: never a small picture); Media apps get
+  Boxshelf's `iconFront` look. The shelf asks for the covers in view, nearest first, keeps 32 decoded.
+- Tools: `fetch-listings.py` also saves the cover indexes and cover folder listings; `list-library` reports
+  coverage; `fetch-covers.py` copies the console's covers to `.local/console` (not committed) so the preview can
+  show them (`make preview MODES="real-psx-10 real-sw-4 ..."`, `BOXSHELF_CONSOLE_DIR`).
+
+**Coverage on the owner's console (read-only):** box art for **161 of 232** games — GC 2/2, Wii 1/1, Switch 8/8
+(icons, composed), PS4 2/2, PS5 10/10 (icons, composed), Custom 2/2, Media 9/9, 3DS 5/5 (one via its icon),
+PS1 77/87, **PS2 45/105**, Wii U 0/1. The missing PS2 covers are not on the console at all: they need the PC
+cover tool (GameTDB / PS2 covers) — waiting for the Estante handoff (`emulator_covers_sync.py`).
+
+**Tests run:** `make test` → data 200/0, shelf 57/0, list-library ok, preview ok; previews `real-psx-10`,
+`real-sw-4`, `real-n3ds-3`, `real-gc-1`, `real-ps5-4`, `real-media-3` with the console's covers; `make app` builds.
+
+**Verified on:** unit tests + PC preview with the owner's real covers copied read-only. **Not yet on the console**
+(the console went to sleep before a new deploy).
+
+**Deviations:** composed covers have no title line yet (covers.js draws the title; needs the text-to-texture pass
+that the spines need too); PS5/PS4 use the square `icon0` until the store portrait art tool is ported.
+
+**Next step:** owner redeploys to see real covers; then spines (band + title), glare, sheen, floor strips, backs.
