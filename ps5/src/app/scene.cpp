@@ -130,6 +130,10 @@ Wordmark wordmark(data::System s)
         w.top = rgb(0xffffff), w.bottom = rgb(0xa7b1bf), w.glow = Color{167 / 255.f, 177 / 255.f, 191 / 255.f, .35f};
         w.tag = rgb(0xcdd3dc);
         return w;
+    case System::custom: // .wm-custom: the PC lettering in a warm tint
+        w.top = rgb(0xfff0e0), w.bottom = rgb(0xe6955a), w.glow = Color{230 / 255.f, 149 / 255.f, 90 / 255.f, .4f};
+        w.tag = rgb(0xecc29c);
+        return w;
     case System::media:
         return {Face::dmserif_italic, 44, 0.0f, rgb(0xefe6ff), rgb(0xa98bff), Color{169 / 255.f, 139 / 255.f, 1, .45f}, rgb(0xc9b8ff), false};
     default: // PS5 and anything else: the plain .wm look
@@ -158,6 +162,7 @@ const char *tab_name(data::System s)
     case System::n3ds: return "3DS";
     case System::psx: return "PlayStation";
     case System::nds: return "DS";
+    case System::custom: return "Custom";
     case System::media: return "Media";
     default: return "";
     }

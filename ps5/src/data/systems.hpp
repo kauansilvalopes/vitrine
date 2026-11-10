@@ -29,6 +29,7 @@ enum class System : std::uint8_t
     n3ds,
     psx,
     nds,
+    custom, // PC ports and recomps (Boxshelf's Custom shelf): homebrew ports installed on the PS5
     media,
     count
 };

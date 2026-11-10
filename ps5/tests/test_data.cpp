@@ -88,6 +88,9 @@ static void test_rules()
     CHECK_EQ(clean_title("Dr. Robot 2.5", false), "Dr. Robot 2.5"); // a folder's dot is not an extension
     CHECK_EQ(clean_title("Dr. Robot 2.iso"), "Dr. Robot 2");
     CHECK_EQ(clean_title("(only tags).iso"), "(only tags).iso"); // nothing readable left: the raw name
+    CHECK_EQ(clean_title("Luigi_s Mansion (USA).3ds"), "Luigi's Mansion");
+    CHECK_EQ(clean_title("Legend of Zelda, The - Majora_s Mask 3D (Europe).3ds"), "The Legend of Zelda - Majora's Mask 3D");
+    CHECK_EQ(clean_title("Some_Game_Name (Europe).chd"), "Some Game Name");
 
     CHECK_EQ(make_game_id(System::ps2, "/a/b.iso"), make_game_id(System::ps2, "/a/b.iso"));
     CHECK(make_game_id(System::ps2, "/a/b.iso") != make_game_id(System::ps2, "/a/c.iso"));
@@ -174,6 +177,10 @@ static void test_appdb_and_shelves()
     CHECK(apps.size() == 4 && apps[1].system == System::ps4);
     CHECK(apps.size() == 4 && apps[2].system == System::media && apps[2].app == "PPSA99841");
     CHECK(apps.size() == 4 && apps[3].title == "PPSA02222"); // no name: the id
+    // homebrew ports -> Custom; streaming apps -> Media
+    const auto more = games_from_appdb(
+        R"({"titles":[{"titleId":"PPSA90212","titleName":"A Port"},{"titleId":"PPSA01651","titleName":"YouTube"}]})");
+    CHECK(more.size() == 2 && more[0].system == System::custom && more[1].system == System::media);
 
     std::vector<Game> all = apps;
     const Root ps2{"/r", System::ps2, RootKind::files, false};

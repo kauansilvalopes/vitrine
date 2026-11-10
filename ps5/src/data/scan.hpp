@@ -75,6 +75,10 @@ bool parse_fs_list(std::string_view json, std::vector<DirEntry> &out);
 // Elf Arsenal /appdb body: {"titles":[{"titleId":..,"titleName":..},..]} -> PS5 / PS4 games and apps. Homebrew
 // title ids (PPSA9xxxx) go to the Media shelf; this app itself is left out.
 std::vector<Game> games_from_appdb(std::string_view json);
+// PPSA9xxxx titles that are tools / emulators (-> Media); other PPSA9xxxx are ports (-> Custom).
+bool is_homebrew_app(std::string_view title_id) noexcept;
+// Retail streaming apps (-> Media).
+bool is_streaming_app(std::string_view title_id) noexcept;
 
 // ---- library ----
 // The order Boxshelf's scanner gives a shelf: case-insensitive, numbers by value ("Game 2" before "Game 10").

@@ -172,7 +172,14 @@ System gc_or_wii_from_disc_id(std::string_view id) noexcept
 
 std::string clean_title(std::string_view file, bool is_file)
 {
-    // Port of Estante's clean_rom_title (src/emulator_import.hpp).
+    // Port of Estante's clean_rom_title (src/emulator_import.hpp). No-Intro writes an apostrophe as "_"
+    // ("Luigi_s Mansion"): a "_s" after a letter and before a space, a bracket or the end becomes "'s".
+    std::string fixed(file);
+    for (std::size_t i = 1; i + 1 < fixed.size(); ++i)
+        if (fixed[i] == '_' && fixed[i + 1] == 's' && std::isalpha(static_cast<unsigned char>(fixed[i - 1])) &&
+            (i + 2 == fixed.size() || fixed[i + 2] == ' ' || fixed[i + 2] == '(' || fixed[i + 2] == '.'))
+            fixed[i] = '\'';
+    file = fixed;
     std::string_view stem = file;
     const auto dot = stem.rfind('.');
     if (is_file && dot != std::string_view::npos && dot != 0 && stem.size() - dot <= 6 &&
@@ -403,6 +410,32 @@ bool parse_fs_list(std::string_view json, std::vector<DirEntry> &out)
     return ok;
 }
 
+bool is_homebrew_app(std::string_view tid) noexcept
+{
+    // Homebrew that is a tool or an emulator, not a game (the rest of PPSA9xxxx are ports: the Custom shelf).
+    static constexpr std::string_view apps[] = {
+        "PPSA99841", // Estante
+        "PPSA99842", // Trophy Manager
+        "PPSA99000", // ProsperoStore
+        "PPSA99505", // Jelly5
+        "PPSA99203", "PPSA98510", "PPSA99764", "PPSA99360", "PPSA99008", // the emulators (section 5)
+    };
+    for (auto a : apps)
+        if (a == tid)
+            return true;
+    return false;
+}
+
+bool is_streaming_app(std::string_view tid) noexcept
+{
+    // Retail apps that are not games: Boxshelf's Media shelf holds the streaming apps.
+    static constexpr std::string_view apps[] = {"PPSA01651" /* YouTube */};
+    for (auto a : apps)
+        if (a == tid)
+            return true;
+    return false;
+}
+
 std::vector<Game> games_from_appdb(std::string_view json)
 {
     std::vector<Game> games;
@@ -423,7 +456,9 @@ std::vector<Game> games_from_appdb(std::string_view json)
         if (tid.substr(0, 4) == "CUSA")
             system = System::ps4;
         else if (tid.substr(0, 4) == "PPSA")
-            system = tid[4] == '9' ? System::media : System::ps5;
+            system = tid[4] == '9' ? (is_homebrew_app(tid) ? System::media : System::custom) : System::ps5;
+        if (is_streaming_app(tid))
+            system = System::media;
         if (system == System::count)
             continue;
         if (std::any_of(games.begin(), games.end(), [&](const Game &g) { return g.app == tid; }))
