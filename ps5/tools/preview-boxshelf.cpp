@@ -288,7 +288,21 @@ int main(int argc, char **argv)
         std::fprintf(stderr, "usage: %s <out.ppm> <mode>\n", argv[0]);
         return 2;
     }
-    const std::string mode = argv[2];
+    std::string mode = argv[2];
+    // <mode>-flip: the selected case turned round (Triangle), <mode>-turn: caught mid-turn
+    int flip = 0;
+    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}})
+        if (mode.size() > std::strlen(suffix) && mode.compare(mode.size() - std::strlen(suffix), std::string::npos, suffix) == 0)
+            flip = kind, mode.resize(mode.size() - std::strlen(suffix));
+    auto press_triangle = [](boxshelf::app::ShelfScreen &screen, double now)
+    {
+        hui::InputFrame down;
+        down.pressed = down.held = hui::action_bit(hui::Action::north);
+        screen.input(down, now, 0.016f);
+        hui::InputFrame up;
+        up.released = hui::action_bit(hui::Action::north);
+        screen.input(up, now + 0.1, 0.016f);
+    };
     static GlHost host;
     if (!host.init())
     {
@@ -328,6 +342,20 @@ int main(int argc, char **argv)
                 break;
             usleep(16000);
         }
+        if (flip)
+        {
+            press_triangle(screen, now);
+            for (int frame = 0; frame < 240; ++frame) // the back art, when the emulator keeps one
+            {
+                host.render(screen, now + 0.1);
+                if (frame > 2 && screen.covers_pending() == 0)
+                    break;
+                usleep(16000);
+            }
+            now += flip == 2 ? 1.2 : 0.3;
+            host.render(screen, now);
+            return host.write_ppm(argv[1]) ? 0 : 3;
+        }
         host.render(screen, now + 1.7);
         return host.write_ppm(argv[1]) ? 0 : 3;
     }
@@ -366,6 +394,11 @@ int main(int argc, char **argv)
         in.nav = hui::Direction::right;
         screen.input(in, now, 0.016f);
         now += 0.06;
+    }
+    else if (flip)
+    {
+        press_triangle(screen, now);
+        now += flip == 2 ? 1.2 : 0.3;
     }
     else
         now += 1.7; // the halo's breath at full strength

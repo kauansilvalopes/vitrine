@@ -280,6 +280,21 @@ void ShelfScreen::on_moved(double now)
     bg_due_ = now + 0.12; // updateBg(): setTimeout(..., 120)
     info_since_ = now;    // .info rise 450 ms
     landed_at_ = now;     // landSel(): .landed after 380 ms (sheen)
+    // a new selection starts face up (its box gets a fresh rotateY(0))
+    flipped_ = false;
+    flip_.set(0.0f, now, true);
+}
+
+void ShelfScreen::set_flipped(bool on, double now)
+{
+    const Item *it = model_.item();
+    if (!it || it->kind != ItemKind::game)
+        on = false;
+    if (on == flipped_)
+        return;
+    flipped_ = on;
+    flip_.set(on ? 180.0f : 0.0f, now);
+    landed_at_ = now - 10.0; // flip() takes .landed off: no sheen on the turned case
 }
 
 void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
@@ -302,6 +317,17 @@ void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
             on_moved(now);
         }
     }
+    // Triangle: a tap flips (PAD_HINTS: Flip, hold for favourite); Circle turns a flipped case back.
+    if (in.is_pressed(hui::Action::north))
+        north_down_ = now;
+    if ((in.released & hui::action_bit(hui::Action::north)) && north_down_ >= 0.0)
+    {
+        if (now - north_down_ < .5)
+            set_flipped(!flipped_, now);
+        north_down_ = -1.0;
+    }
+    if (in.is_pressed(hui::Action::back) && flipped_)
+        set_flipped(false, now);
     // L2 / R2: System (PAD_HINTS: System = L2 R2); Up / Down do the same on the keyboard.
     int sys = systems_.step(in, dt);
     if (in.nav == hui::Direction::up)
@@ -455,6 +481,20 @@ void ShelfScreen::update_covers(GlCanvas &canvas)
             if (d == 0)
                 break;
         }
+    // The selected game's own back (emulator caches keep one for PS2, GameCube, Wii), once it is being flipped.
+    if (flipped_ && sel >= 0 && sel < n)
+    {
+        const Item &it = shelf.items[static_cast<std::size_t>(sel)];
+        const auto &g = it.game;
+        const std::string key = g.id + "|back";
+        if (it.kind == ItemKind::game && !g.cover_back.empty() && !art_.count(key) &&
+            std::find(art_missing_.begin(), art_missing_.end(), key) == art_missing_.end())
+        {
+            const auto spec = data::cover_spec(data::style(it.system), 360);
+            wish.push_back({key, g.cover_back, it.system, false, spec.width, spec.height, std::string(), false});
+            sig += key;
+        }
+    }
     covers_pending_ = static_cast<int>(wish.size());
     if (sig != wish_)
     {
@@ -534,6 +574,164 @@ std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item)
     const int w = cover_size_[key];
     const int h = static_cast<int>(it->second.size()) / w;
     return canvas.texture_for(it->second.data(), static_cast<unsigned>(w), static_cast<unsigned>(h));
+}
+
+namespace
+{
+// covers.js wrapLines(): greedy word wrap at max_w.
+std::vector<std::string> wrap_lines(Face face, const std::string &s, float size, float max_w)
+{
+    std::vector<std::string> lines;
+    std::string line, word;
+    auto flush_word = [&]
+    {
+        if (word.empty())
+            return;
+        const std::string attempt = line.empty() ? word : line + " " + word;
+        if (!line.empty() && measure(face, attempt, size) > max_w)
+        {
+            lines.push_back(line);
+            line = word;
+        }
+        else
+            line = attempt;
+        word.clear();
+    };
+    for (char c : s)
+    {
+        if (c == ' ')
+            flush_word();
+        else
+            word += c;
+    }
+    flush_word();
+    if (!line.empty())
+        lines.push_back(line);
+    return lines;
+}
+
+float text_at_baseline(DrawList &list, Face face, std::string_view s, float x, float base, float size, Color color)
+{
+    const UiFont f = app::face(face);
+    return f ? list.text(*f.font, f.texture, s, x, base, size, color, Align::left) : 0.0f;
+}
+
+// covers.js rng(): mulberry32
+struct Rng
+{
+    std::uint32_t a;
+    float operator()()
+    {
+        a += 0x6D2B79F5u;
+        std::uint32_t t = a;
+        t = (t ^ (t >> 15)) * (t | 1u);
+        t ^= t + (t ^ (t >> 7)) * (t | 61u);
+        return static_cast<float>(t ^ (t >> 14)) / 4294967296.0f;
+    }
+};
+} // namespace
+
+void ShelfScreen::draw_made_up_back(DrawList &list, const Item &item, const Rect &r)
+{
+    const auto &st = data::style(item.system);
+    // .f-back{background:var(--case); padding:var(--edge); padding-right:var(--edge-in)}
+    list.rounded_rect(r, 0, rgb(st.case_color));
+    const float e = std::round(r.w * st.edge);
+    const Rect c{r.x + e, r.y + e, r.w - e - (st.wrap ? 0.0f : e), r.h - 2.0f * e};
+    list.push_clip(c);
+    const float W = c.w, Hh = c.h, k = W / 420.0f; // drawBack() draws on a 420-wide canvas
+    const float hue = static_cast<float>(item.hue);
+    list.gradient_rect(c, 0, hsl(hue + 200, 40, 16), hsl(hue + 230, 45, 7));
+    // band(): 8.5 % tall, the label at 5 %, 700 bandH*.42, middle
+    float band_h = 0.0f;
+    if (st.has_band)
+    {
+        band_h = std::round(Hh * .085f);
+        list.rounded_rect({c.x, c.y, W, band_h}, 0, rgb(st.band.bg));
+        const float fs = band_h * .42f;
+        const UiFont f = app::face(Face::lexend800);
+        const float base = f ? c.y + band_h * .5f + (f.font->ascent(fs) - f.font->descent(fs)) * .5f : c.y + band_h * .6f;
+        text_at_baseline(list, Face::lexend800, st.band.label, c.x + W * .05f, base, fs, rgb(st.band.fg));
+    }
+    // the title: 22px in one of the cover fonts (Lilita One is not carried: Lexend 800 stands in), two lines at most
+    static constexpr Face kTitleFaces[3] = {Face::lexend800, Face::bungee400, Face::audiowide400};
+    const Face tf = kTitleFaces[item.seed % 3];
+    const auto title = wrap_lines(tf, upper(item.title), 22.0f * k, W * .88f);
+    for (std::size_t i = 0; i < title.size() && i < 2; ++i)
+        text_at_baseline(list, tf, title[i], c.x + W * .06f, c.y + band_h + (40.0f + 26.0f * static_cast<float>(i)) * k,
+                         22.0f * k, rgb(0xffffff));
+    // four "screenshots": drawScene() reduced to its sky, moon and hills (the other scene kinds are not ported)
+    Rng rnd{item.seed ^ 0x9e3779b9u};
+    const float shot_w = W * .42f, shot_h = shot_w * .6f, top = band_h + 90.0f * k;
+    const float pos[4][2] = {{W * .06f, top}, {W * .52f, top}, {W * .06f, top + shot_h + 10 * k}, {W * .52f, top + shot_h + 10 * k}};
+    for (int i = 0; i < 4; ++i)
+    {
+        const float sx = c.x + pos[i][0], sy = c.y + pos[i][1], H = hue + 35.0f * static_cast<float>(i);
+        const Rect shot{sx, sy, shot_w, shot_h};
+        list.push_clip(shot);
+        list.gradient_rect(shot, 0, hsl(H, 75, 62), hsl(H + 40, 70, 32));
+        list.circle(sx + shot_w * (.2f + rnd() * .6f), sy + shot_h * .3f, shot_w * .12f, hsl(H + 60, 95, 80).with_alpha(.9f));
+        for (int layer = 0; layer < 3; ++layer)
+        {
+            const float base = sy + shot_h * (.62f + .12f * static_cast<float>(layer));
+            std::vector<float> xy{sx, sy + shot_h, sx, base};
+            float px = sx;
+            while (px < sx + shot_w)
+            {
+                const float pw = shot_w * (.12f + rnd() * .18f);
+                xy.insert(xy.end(), {px + pw * .5f, base - shot_h * (.08f + rnd() * .18f), px + pw, base});
+                px += pw;
+            }
+            xy.insert(xy.end(), {sx + shot_w, sy + shot_h});
+            list.polygon(xy.data(), static_cast<int>(xy.size() / 2),
+                         hsl(H + 90 + 18 * static_cast<float>(layer), 55, 48 - 8 * static_cast<float>(layer)));
+        }
+        list.pop_clip();
+        // strokeRect, 2px rgba(255,255,255,.7)
+        const Color edge{1, 1, 1, .7f};
+        const float t = 2.0f * k;
+        list.rounded_rect({sx - t * .5f, sy - t * .5f, shot_w + t, t}, 0, edge);
+        list.rounded_rect({sx - t * .5f, sy + shot_h - t * .5f, shot_w + t, t}, 0, edge);
+        list.rounded_rect({sx - t * .5f, sy + t * .5f, t, shot_h - t}, 0, edge);
+        list.rounded_rect({sx + shot_w - t * .5f, sy + t * .5f, t, shot_h - t}, 0, edge);
+    }
+    // the info rows (app.js infoRows()), 13px Lexend: key at 6 % in white .55, value at 34 %
+    std::vector<std::pair<std::string, std::string>> rows;
+    const auto &g = item.game;
+    const bool app_like = item.system == data::System::ps5 || item.system == data::System::ps4 ||
+                          item.system == data::System::custom || item.system == data::System::media;
+    if (app_like)
+    {
+        rows.push_back({"Type", item.system == data::System::media    ? std::string("Streaming app")
+                                : item.system == data::System::custom ? std::string("Homebrew")
+                                                                      : std::string(tab_name(item.system)) + " game"});
+        rows.push_back({"Title ID", g.app.empty() ? std::string("Unknown") : g.app});
+    }
+    else
+    {
+        rows.push_back({"Region", g.region.empty() ? std::string("Unknown") : g.region});
+        std::string file = "Folder";
+        if (!g.folder)
+        {
+            const auto dot = g.path.find_last_of('.');
+            file = dot == std::string::npos ? std::string("File") : upper(g.path.substr(dot + 1));
+        }
+        rows.push_back({"File", file});
+        rows.push_back({"Emulator", emulator_name(item.system)});
+        if (!g.disc_id.empty())
+            rows.push_back({"Serial", g.disc_id});
+    }
+    float y = top + shot_h * 2.0f + 44.0f * k;
+    const float fs = 13.0f * k;
+    for (const auto &[key, value] : rows)
+    {
+        if (y > Hh - 40.0f * k)
+            break;
+        text_at_baseline(list, Face::lexend500, key, c.x + W * .06f, c.y + y, fs, Color{1, 1, 1, .55f});
+        text_at_baseline(list, Face::lexend500, value, c.x + W * .34f, c.y + y, fs, rgb(0xffffff));
+        y += 22.0f * k;
+    }
+    list.pop_clip();
 }
 
 void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
@@ -646,6 +844,42 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     const float since = static_cast<float>(now - landed_at_) - .38f;
     const float sheen = since >= 0.0f && since <= .85f ? -.49f + 2.05f * sheen_ease(since / .85f) : -9.0f;
 
+    // The selected case's back, once it turns: its own art, or covers.js drawBack() rendered into the back target.
+    const float turn = flip_.at(now);
+    std::uint32_t back_tex = 0;
+    bool back_drawn = false;
+    float back_uv[4] = {0, 0, 1, 1};
+    if (sel >= 0 && sel < static_cast<int>(shelf.items.size()) && std::fabs(turn) > .5f)
+    {
+        const Item &item = shelf.items[static_cast<std::size_t>(sel)];
+        const auto real = art_.find(item.game.id + "|back");
+        if (real != art_.end())
+        {
+            auto &c = *real->second;
+            const auto fresh = std::find(art_new_.begin(), art_new_.end(), real->first);
+            if (fresh != art_new_.end())
+            {
+                canvas.invalidate(c.pixels.data());
+                art_new_.erase(fresh);
+            }
+            back_tex = canvas.texture_for(c.pixels.data(), static_cast<unsigned>(c.width), static_cast<unsigned>(c.height));
+        }
+        else if (canvas.back_texture())
+        {
+            // fit the case's proportions inside the 640x960 target; the face shows only that part
+            const float tw = static_cast<float>(GlCanvas::back_width), th = static_cast<float>(GlCanvas::back_height);
+            float w = tw, h = tw * bh / bw;
+            if (h > th)
+                h = th, w = th * bw / bh;
+            canvas.begin_back();
+            draw_made_up_back(canvas.list(), item, {0, 0, w, h});
+            canvas.end_back();
+            back_tex = canvas.back_texture();
+            back_drawn = true;
+            back_uv[0] = 0.0f, back_uv[1] = 1.0f - h / th, back_uv[2] = w / tw, back_uv[3] = 1.0f;
+        }
+    }
+
     for (int i : drawn)
     {
         const auto &slot = slots_[static_cast<std::size_t>(i)];
@@ -660,8 +894,15 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         op.width = bw;
         op.height = bh;
         op.depth = bd;
-        op.yaw = ry * kPi / 180.0f;
+        op.yaw = (ry + (is_sel ? turn : 0.0f)) * kPi / 180.0f;
         op.front = cover_texture(canvas, item);
+        if (is_sel && back_tex)
+        {
+            op.back = back_tex;
+            op.flip_back = back_drawn;
+            for (int c = 0; c < 4; ++c)
+                op.back_uv[c] = back_uv[c];
+        }
         op.side_r = side.r, op.side_g = side.g, op.side_b = side.b;
         op.alpha = alpha;
         op.shade = is_sel ? 1.0f : 0.66f; // .slot:not(.sel) .dim{opacity:.34}
@@ -673,7 +914,7 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         op.glare = is_sel ? 1.0f : .55f;
         // .glare: a layer 1.2 faces wide (left -10 %), translateX((-ry/110 - x/(bw*7)) * 83.25 %)
         op.glare_pos = .5f + (-ry / 110.0f - x / (bw * 7.0f)) * 83.25f * .012f;
-        op.sheen_pos = is_sel ? sheen : -9.0f;
+        op.sheen_pos = is_sel && !flipped_ ? sheen : -9.0f;
         const float y0 = rows[static_cast<std::size_t>(i)];
         if (y0 >= 0.0f && canvas.spine_texture())
         {

@@ -430,12 +430,18 @@ void Gl3D::draw(const CaseOp &op) noexcept
         glare_[2] = h / w;
         round_[0] = op.corner;
         round_[1] = -op.corner_side;
+        for (int c = 0; c < 4; ++c)
+            uvrect_[c] = op.back_uv[c];
+        film_ = op.reflection ? 0.0f : op.film; // .f-back::after carries the same film
         if (op.back)
             draw_range(body, box_back_, 6, op.back, k, k, k, a, fade);
         else
             draw_range(body, box_back_, 6, 0, op.side_r * k, op.side_g * k, op.side_b * k, a, fade);
         flip_ = 0.0f;
         round_[0] = round_[1] = 0.0f;
+        film_ = 0.0f;
+        uvrect_[0] = uvrect_[1] = 0.0f;
+        uvrect_[2] = uvrect_[3] = 1.0f;
         if (op.spine)
         {
             // Sides 12..17 are the left edge, 18..23 the right: the spine picture replaces them.

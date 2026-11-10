@@ -77,6 +77,9 @@ class ShelfScreen
     void draw_letter_flash(hui::gfx::DrawList &list, double now);
     void draw_empty(hui::gfx::DrawList &list);
     std::uint32_t cover_texture(GlCanvas &canvas, const Item &item);
+    // covers.js drawBack(): the made-up back of a game with no back art, drawn into r of the current list.
+    void draw_made_up_back(hui::gfx::DrawList &list, const Item &item, const hui::gfx::Rect &r);
+    void set_flipped(bool on, double now);
     void update_covers(GlCanvas &canvas);
 
     ShelfModel model_;
@@ -87,6 +90,10 @@ class ShelfScreen
     double bg_due_ = -1.0; // updateBg's 120 ms timer
     double info_since_ = -10.0; // the title strip's rise
     double landed_at_ = -10.0;
+    // Triangle: flip() turns the selected case round (.box transition: transform .75s cubic-bezier(.3,.95,.25,1)).
+    bool flipped_ = false;
+    Glide flip_{0.0f, 0.0f, -1.0, .75f, Bezier{.3f, .95f, .25f, 1.0f}, true};
+    double north_down_ = -1.0;
     Glide pill_x_, pill_w_;
     std::string flash_;
     double flash_at_ = -10.0;

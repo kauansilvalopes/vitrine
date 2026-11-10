@@ -54,6 +54,7 @@ struct CaseOp
     float spine_band_h = 0.0f;               // its share of the height (.09; 0 none)
     float spine_shade[4] = {0, 0, 0, .5f};   // .f-left::after film: black alpha back, white alpha, black front, stop
     float film = 0.0f;                       // .f-front::after film strength (1 selected, .55 others)
+    float back_uv[4] = {0, 0, 1, 1};         // the part of `back` this case shows
 };
 
 // A disc: label picture on the face, silver rim, hub and hole.
