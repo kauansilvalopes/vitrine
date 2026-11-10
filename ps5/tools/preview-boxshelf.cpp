@@ -3,6 +3,7 @@
 //
 // usage: preview-boxshelf-gl <out.ppm> <mode>
 // The library is made up (the same invented titles as Boxshelf's renderer/mock.js), so no real game is needed.
+#include "app/clock.hpp"
 #include "app/demo_library.hpp"
 #include "app/i18n.hpp"
 #include "app/scene.hpp"
@@ -76,12 +77,28 @@ struct GlHost
     void render(boxshelf::app::ShelfScreen &screen, double now)
     {
         canvas.begin(&renderer.batch(), &font, font_texture);
-        screen.draw(canvas, now, {"ter., 10 de nov.", "13:15"});
+        screen.draw(canvas, now, clock);
         renderer.begin();
         canvas.submit(renderer);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         renderer.present(fbo, kWidth, kHeight);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    }
+
+    boxshelf::app::Clock clock{"ter., 10 de nov.", "13:15"};
+
+    // The frame as 1920x1080 RGB, top row first (for the video encoder).
+    void read_rgb(std::vector<unsigned char> &rgb)
+    {
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4u);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glReadPixels(0, 0, kWidth, kHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        rgb.resize(static_cast<std::size_t>(kWidth) * kHeight * 3u);
+        for (int y = 0; y < kHeight; y++)
+            for (int x = 0; x < kWidth; x++)
+                for (int c = 0; c < 3; c++)
+                    rgb[(static_cast<std::size_t>(kHeight - 1 - y) * kWidth + x) * 3 + c] =
+                        pixels[(static_cast<std::size_t>(y) * kWidth + x) * 4 + c];
     }
 
     bool write_ppm(const char *path)
@@ -327,6 +344,95 @@ int main(int argc, char **argv)
         screen.set_status("Looking through your game folders");
         host.render(screen, 5.0);
         return host.write_ppm(argv[1]) ? 0 : 3;
+    }
+    if (mode == "video")
+    {
+        // A scripted tour of the demo shelves at 60 fps, piped to ffmpeg: argv[1] is the .mp4. Every frame waits
+        // (at the same moment of the timeline) until the covers in view are decoded, so no placeholder is filmed.
+        auto games = boxshelf::app::demo_games();
+        boxshelf::app::apply_downloaded_art(games);
+        std::vector<boxshelf::app::Shelf> shelves;
+        for (const auto &sh : boxshelf::data::build_shelves(games))
+            if (!sh.games.empty())
+                shelves.push_back(boxshelf::app::prepare_shelf(sh, false));
+        boxshelf::app::ShelfModel model;
+        model.set(std::move(shelves));
+        screen.set_library(std::move(model), 0.0);
+        host.clock = boxshelf::app::format_clock(1794316500LL); // 2026-11-10 13:15, in the interface language
+        boxshelf::app::Settings demo_on;
+        demo_on.demo = true; // the menu says what is on screen
+        screen.set_settings(demo_on);
+        auto &m = screen.model();
+        m.go(4);
+        // the timeline: (seconds, what happens)
+        enum Ev { Right, Left, Next, Prev, Flip, Back, Menu, Down, Up };
+        std::vector<std::pair<double, Ev>> script;
+        double t = 2.4;
+        auto at = [&](double dt, Ev e) { t += dt; script.push_back({t, e}); };
+        // GameCube: a few steps
+        at(0.0, Right), at(0.55, Right), at(0.55, Right), at(0.55, Right);
+        // every other shelf: down to it, two steps along
+        for (int shelf = 1; shelf < m.shelf_count(); ++shelf)
+        {
+            at(1.5, Down);
+            at(1.35, Right), at(0.6, Right);
+            // Switch and 3DS: turned round to their real backs (cut from GameTDB's full covers)
+            const auto sys = m.shelf(shelf).system;
+            if (sys == boxshelf::data::System::sw || sys == boxshelf::data::System::n3ds)
+                at(1.2, Flip), at(2.6, Back);
+        }
+        // the quick menu: Box backs, Demo shelves, Language
+        at(1.6, Menu), at(1.0, Down), at(0.8, Down), at(0.8, Down), at(1.6, Menu);
+        const double end = t + 2.2;
+        const std::string cmd = std::string("ffmpeg -loglevel error -y -f rawvideo -pix_fmt rgb24 -s 1920x1080 -r 60 -i - ") +
+                                "-c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -movflags +faststart '" + argv[1] + "'";
+        FILE *ff = popen(cmd.c_str(), "w");
+        if (!ff)
+            return 6;
+        std::vector<unsigned char> rgb;
+        std::size_t next = 0;
+        const double t0 = 5.0;
+        screen.settle(t0);
+        const int frames = static_cast<int>(end * 60.0);
+        for (int f = 0; f < frames; ++f)
+        {
+            const double now = t0 + f / 60.0;
+            while (next < script.size() && script[next].first <= f / 60.0)
+            {
+                hui::InputFrame in;
+                switch (script[next].second)
+                {
+                case Right: in.nav = hui::Direction::right; break;
+                case Left: in.nav = hui::Direction::left; break;
+                case Down: in.nav = hui::Direction::down; break;
+                case Up: in.nav = hui::Direction::up; break;
+                case Next: in.pressed = hui::action_bit(hui::Action::jump_next); break;
+                case Prev: in.pressed = hui::action_bit(hui::Action::jump_prev); break;
+                case Back: in.pressed = hui::action_bit(hui::Action::back); break;
+                case Menu: in.pressed = hui::action_bit(hui::Action::menu); break;
+                case Flip:
+                    in.pressed = in.held = hui::action_bit(hui::Action::north);
+                    screen.input(in, now, 1.0f / 60.0f);
+                    in = hui::InputFrame{};
+                    in.released = hui::action_bit(hui::Action::north);
+                    break;
+                }
+                screen.input(in, now, 1.0f / 60.0f);
+                ++next;
+            }
+            host.render(screen, now);
+            for (int wait = 0; wait < 400 && screen.covers_pending() > 0; ++wait)
+            {
+                usleep(5000);
+                host.render(screen, now);
+            }
+            host.read_rgb(rgb);
+            if (std::fwrite(rgb.data(), 1, rgb.size(), ff) != rgb.size())
+                break;
+            if (f % 300 == 0)
+                std::fprintf(stderr, "video: %d / %d frames\n", f, frames);
+        }
+        return pclose(ff) == 0 ? 0 : 7;
     }
     if (mode.rfind("demo-", 0) == 0)
     {
