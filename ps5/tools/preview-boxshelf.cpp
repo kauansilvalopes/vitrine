@@ -3,6 +3,7 @@
 //
 // usage: preview-boxshelf-gl <out.ppm> <mode>
 // The library is made up (the same invented titles as Boxshelf's renderer/mock.js), so no real game is needed.
+#include "app/demo_library.hpp"
 #include "app/i18n.hpp"
 #include "app/scene.hpp"
 #include "app/ui_fonts.hpp"
@@ -325,6 +326,51 @@ int main(int argc, char **argv)
     {
         screen.set_status("Looking through your game folders");
         host.render(screen, 5.0);
+        return host.write_ppm(argv[1]) ? 0 : 3;
+    }
+    if (mode.rfind("demo-", 0) == 0)
+    {
+        // demo-<system key>[-<index>]: the demo shelves, with the art the fetcher downloaded into $BOXSHELF_DOWNLOAD0
+        std::string key = mode.substr(5);
+        int pick = 4;
+        if (const auto dash = key.find('-'); dash != std::string::npos)
+            pick = std::atoi(key.c_str() + dash + 1), key = key.substr(0, dash);
+        auto games = boxshelf::app::demo_games();
+        boxshelf::app::apply_downloaded_art(games);
+        std::vector<boxshelf::app::Shelf> shelves;
+        for (const auto &sh : boxshelf::data::build_shelves(games))
+            if (!sh.games.empty())
+                shelves.push_back(boxshelf::app::prepare_shelf(sh, false));
+        boxshelf::app::ShelfModel model;
+        model.set(std::move(shelves));
+        screen.set_library(std::move(model), 0.0);
+        auto &m = screen.model();
+        const System sys = boxshelf::data::system_from_key(key);
+        for (int k = 0; k < m.shelf_count() && m.cur().system != sys; ++k)
+            m.switch_shelf(1);
+        m.go(pick);
+        double now = 5.0;
+        screen.settle(now);
+        for (int frame = 0; frame < 240; ++frame)
+        {
+            host.render(screen, now);
+            if (frame > 2 && screen.covers_pending() == 0)
+                break;
+            usleep(16000);
+        }
+        if (flip == 2)
+        {
+            press_triangle(screen, now);
+            for (int frame = 0; frame < 120; ++frame)
+            {
+                host.render(screen, now + 0.1);
+                usleep(16000);
+            }
+            now += 1.2;
+        }
+        else
+            now += 1.7;
+        host.render(screen, now);
         return host.write_ppm(argv[1]) ? 0 : 3;
     }
     if (mode.rfind("real-", 0) == 0)

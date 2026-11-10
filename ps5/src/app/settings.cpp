@@ -39,6 +39,8 @@ std::string Settings::to_json() const
     cJSON_AddNumberToObject(root, "version", 1);
     if (!language.empty())
         cJSON_AddStringToObject(root, "language", language.c_str());
+    cJSON_AddBoolToObject(root, "backs", backs);
+    cJSON_AddBoolToObject(root, "demo", demo);
     cJSON *m = cJSON_AddObjectToObject(root, "moves");
     for (const auto &[id, key] : moves)
         cJSON_AddStringToObject(m, id.c_str(), key.c_str());
@@ -58,6 +60,10 @@ Settings Settings::from_json(const std::string &json)
     const cJSON *lang = cJSON_GetObjectItemCaseSensitive(root, "language");
     if (cJSON_IsString(lang) && lang->valuestring)
         s.language = lang->valuestring;
+    if (const cJSON *b = cJSON_GetObjectItemCaseSensitive(root, "backs"); cJSON_IsBool(b))
+        s.backs = cJSON_IsTrue(b) != 0;
+    if (const cJSON *d = cJSON_GetObjectItemCaseSensitive(root, "demo"); cJSON_IsBool(d))
+        s.demo = cJSON_IsTrue(d) != 0;
     const cJSON *e = nullptr;
     cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "moves"))
         if (e->string && cJSON_IsString(e) && e->valuestring)

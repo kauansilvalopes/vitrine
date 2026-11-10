@@ -124,7 +124,27 @@ bool back_source(std::string_view key)
     return key == "gc" || key == "wii" || key == "sw" || key == "n3ds";
 }
 
-std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything)
+void apply_downloaded_art(std::vector<data::Game> &games)
+{
+    for (auto &g : games)
+    {
+        struct stat st
+        {
+        };
+        const std::string front = downloaded_cover_path(g.id), back = downloaded_back_path(g.id);
+        if (g.cover_back.empty() && stat(back.c_str(), &st) == 0 && st.st_size > 0)
+            g.cover_back = back;
+        if (g.cover_front.rfind("/data/boxshelf/covers/", 0) != 0 && stat(front.c_str(), &st) == 0 && st.st_size > 0)
+        {
+            if (!g.cover_front.empty() && g.cover_front != front)
+                g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
+            g.cover_front = front;
+            g.cover_square = false;
+        }
+    }
+}
+
+std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything, bool backs)
 {
     std::vector<ArtJob> jobs;
     auto exists = [](const std::string &path)
@@ -148,7 +168,7 @@ std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everythi
         const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
         j.front = everything ? !own : !own && !exists(downloaded_cover_path(g.id));
         const bool back_here = !g.cover_back.empty() && g.cover_back != downloaded_back_path(g.id);
-        j.back = back_source(key) && !back_here && (everything || !exists(downloaded_back_path(g.id)));
+        j.back = backs && back_source(key) && !back_here && (everything || !exists(downloaded_back_path(g.id)));
         if (j.front || j.back)
             jobs.push_back(std::move(j));
     }

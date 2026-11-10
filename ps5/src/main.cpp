@@ -1,6 +1,7 @@
 // Boxshelf PS5 - console entry point. SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/art_fetcher.hpp"
 #include "app/clock.hpp"
+#include "app/demo_library.hpp"
 #include "app/i18n.hpp"
 #include "app/library_loader.hpp"
 #include "app/scene.hpp"
@@ -23,6 +24,43 @@ boxshelf::app::ArtFetcher art;
 hui::ps5::Pad pad;
 hui::InputTracker tracker;
 bool pad_tried = false;
+// The library as the loader read it, kept for switching the demo shelves off again; art runs waiting for the fetcher.
+std::vector<boxshelf::app::Shelf> real_shelves;
+std::vector<boxshelf::app::ArtJob> waiting_jobs;
+bool jobs_waiting = false;
+
+// Menu → Demo shelves: well-known games on every platform (art downloaded like any other), the PS5 shelf kept as it is.
+std::vector<boxshelf::app::Shelf> demo_shelves(std::vector<boxshelf::data::Game> &demo)
+{
+    using namespace boxshelf;
+    demo = app::demo_games();
+    app::apply_downloaded_art(demo);
+    std::vector<data::Game> games = demo;
+    for (const auto &s : real_shelves)
+        if (s.system == data::System::ps5)
+            for (const auto &it : s.items)
+                if (it.kind == app::ItemKind::game)
+                    games.push_back(it.game);
+    std::vector<app::Shelf> out;
+    for (const auto &s : data::build_shelves(games))
+        if (!s.games.empty())
+            out.push_back(app::prepare_shelf(s, false));
+    return out;
+}
+
+void show_shelves(bool demo, double now)
+{
+    using namespace boxshelf;
+    app::ShelfModel model;
+    std::vector<data::Game> demo_list;
+    model.set(demo ? demo_shelves(demo_list) : real_shelves);
+    screen.set_library(std::move(model), now);
+    if (demo)
+    {
+        waiting_jobs = app::art_jobs(demo_list, false, screen.settings().backs);
+        jobs_waiting = true;
+    }
+}
 
 // The console's time zone. The app runtime has time() but no localtime(): the offset comes from the system settings.
 // Parameter ids 4 (time zone, minutes) and 5 (summer time) follow the PS4 SDK numbering; NOT yet confirmed on the
@@ -57,11 +95,13 @@ void draw(boxshelf::GlCanvas &canvas) noexcept
     std::vector<boxshelf::app::ArtJob> jobs;
     if (loader.take(shelves, jobs))
     {
-        boxshelf::app::ShelfModel model;
-        model.set(std::move(shelves));
-        screen.set_library(std::move(model), now);
+        real_shelves = std::move(shelves);
+        show_shelves(screen.settings().demo, now);
         screen.set_status("");
         // Box art from the sources Boxshelf uses, downloaded in the background; covers appear as they land.
+        if (!screen.settings().backs)
+            for (auto &j : jobs)
+                j.back = false;
         art.start(std::move(jobs));
     }
     else if (screen.model().empty())
@@ -70,7 +110,19 @@ void draw(boxshelf::GlCanvas &canvas) noexcept
         screen.art_arrived(id, path);
     // Settings → Box art: find what is missing, or download everything again
     if (const int ask = screen.take_art_request())
-        art.restart(boxshelf::app::art_jobs(screen.games(), ask == 2));
+    {
+        waiting_jobs = boxshelf::app::art_jobs(screen.games(), ask == 2, screen.settings().backs);
+        jobs_waiting = true;
+    }
+    if (screen.take_demo_request() && !real_shelves.empty())
+        show_shelves(screen.settings().demo, now);
+    // a run asked for while another is going starts when that one ends
+    if (jobs_waiting && !art.running())
+    {
+        art.restart(std::move(waiting_jobs));
+        waiting_jobs.clear();
+        jobs_waiting = false;
+    }
     screen.set_art_status(art.status(), art.running(), now);
     if (!pad_tried)
     {

@@ -103,6 +103,13 @@ constexpr Entry kTable[] = {
     // the quick menu
     {"Move to shelf", "Mover para a aba", "Mover a la pesta\xc3\xb1" "a"},
     {"Language", "Idioma", "Idioma"},
+    {"Box backs", "Versos das caixas", "Reversos de las cajas"},
+    {"Download", "Baixar", "Descargar"},
+    {"Off", "Desligado", "Desactivado"},
+    {"On", "Ligado", "Activado"},
+    {"Demo shelves", "Estante de demonstra\xc3\xa7\xc3\xa3o", "Estanter\xc3\xad" "a de demostraci\xc3\xb3n"},
+    {"A demo game: nothing to start", "Jogo de demonstra\xc3\xa7\xc3\xa3o: nada para abrir",
+     "Juego de demostraci\xc3\xb3n: nada que abrir"},
     {"Box art", "Capas", "Car\xc3\xa1tulas"},
     {"Up to date", "Em dia", "Al d\xc3\xad" "a"},
     {"Downloading %s", "Baixando %s", "Descargando %s"},

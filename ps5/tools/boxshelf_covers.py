@@ -27,7 +27,8 @@ UA = "Boxshelf-PS5/0.1"
 LIBRETRO = {"gc": "Nintendo - GameCube", "wii": "Nintendo - Wii", "psp": "Sony - PlayStation Portable",
             "wiiu": "Nintendo - Wii U", "sw": "Nintendo - Switch", "ps3": "Sony - PlayStation 3",
             "ps4": "Sony - PlayStation 4", "ps2": "Sony - PlayStation 2", "x360": "Microsoft - Xbox 360",
-            "n3ds": "Nintendo - Nintendo 3DS", "psx": "Sony - PlayStation", "nds": "Nintendo - Nintendo DS"}
+            "n3ds": "Nintendo - Nintendo 3DS", "psx": "Sony - PlayStation", "nds": "Nintendo - Nintendo DS",
+            "n64": "Nintendo - Nintendo 64"}
 LAUNCHBOX = {"gc": "Nintendo GameCube", "wii": "Nintendo Wii", "psp": "Sony PSP", "wiiu": "Nintendo Wii U",
              "sw": "Nintendo Switch", "sw2": "Nintendo Switch 2", "ps3": "Sony Playstation 3",
              "ps4": "Sony Playstation 4", "ps5": "Sony Playstation 5", "ps2": "Sony Playstation 2",

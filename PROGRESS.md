@@ -418,3 +418,20 @@ ones — some games have no cover."**
   for PS1/PS2/PS4/PS5 (checked a sample); preview `real-ps2-10-flip` shows Blade II's real back. Unit tests (data
   228/0, shelf 64/0), `make app` builds. **Not on the console yet; the LaunchBox backs are on the PC until the owner
   runs the upload.**
+
+## 2026-11-10 (late night) — backs option, demo shelves
+
+**Owner: "the user must also have the option to download the backs; I want to post screenshots and videos: can you
+put games of every platform, a mock, with nice covers?"**
+- Menu → **Box backs: Download / Off** (saved; default Download). Off: no backs are asked for; turning it on fetches
+  the missing ones at once.
+- Menu → **Demo shelves: Off / On** (saved). 120 well-known games on 14 shelves (GameCube, Wii, Wii U, Switch, PSP,
+  PS2, PS3, PS4, Xbox 360, 3DS, PlayStation, DS, N64) in `src/app/demo_library.cpp` — **titles only**: their box
+  art is downloaded at run time by the app's fetcher like any game's (libretro; Switch from GameTDB's title list) into
+  the app's own folder, so nothing copyrighted is in the repository. PS3 / PS4 / Xbox 360 use games libretro has
+  (its sets there are small). The PS5 shelf keeps the console's own installed titles (no PS5 boxes on libretro /
+  GameTDB). Demo games don't start (toast). `tools/demo-check.sh` checks every title with the app's matcher.
+- A box art run asked for while another is going now waits for it and starts after.
+- **Verified on:** PC — demo-check: 110 of 120 titles on libretro, the 10 Switch ones through GameTDB; the app's
+  fetcher on the PC downloaded **120 / 120 fronts** and 18 backs; previews `demo-ps2-5`, `demo-n64-3`, `demo-x360-3`,
+  `demo-gc-6-flip`. Unit tests (data 228/0, shelf 64/0), `make app` builds. **Not on the console yet.**

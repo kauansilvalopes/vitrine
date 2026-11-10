@@ -30,7 +30,10 @@ std::string downloaded_back_path(const std::string &game_id);
 bool back_source(std::string_view system_key);
 // The work for these games. everything: fetch again even what is already here (Settings: Download all again);
 // otherwise only what is missing (the front when there is no Boxshelf cover, the back when there is no back art).
-std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything);
+// backs: also the backs (Settings → Box art backs).
+std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything, bool backs = true);
+// Points games at the art already downloaded for them (fronts, and backs when they have none).
+void apply_downloaded_art(std::vector<data::Game> &games);
 
 class ArtFetcher
 {

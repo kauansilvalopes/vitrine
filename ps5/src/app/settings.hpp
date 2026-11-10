@@ -11,6 +11,8 @@ namespace boxshelf::app
 struct Settings
 {
     std::string language; // "en", "pt", "es"; empty: the console's language
+    bool backs = true;    // download the backs of the boxes too (Menu → Box art backs)
+    bool demo = false;    // the demo shelves instead of the library (Menu → Demo shelves)
     // Games put on another shelf from the menu: game id -> Boxshelf system key ("sw", "n64"...)
     std::vector<std::pair<std::string, std::string>> moves;
 
