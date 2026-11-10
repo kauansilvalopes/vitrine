@@ -551,7 +551,10 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     std::stable_sort(order.begin(), order.end(),
                      [&](int a, int b) { return std::abs(a - sel) > std::abs(b - sel); });
 
-    const Color side = rgb(st.case_side);
+    // The sides carry setup.css's shading film (.f-left::after: linear-gradient(90deg, rgba(0,0,0,.35),
+    // rgba(255,255,255,.06) 45%, rgba(0,0,0,.25))): on average they sit ~20 % darker than the plastic's colour.
+    const Color side0 = rgb(st.case_side);
+    const Color side{side0.r * .8f, side0.g * .8f, side0.b * .8f, 1.0f};
     for (int i : order)
     {
         const auto &slot = slots_[static_cast<std::size_t>(i)];
