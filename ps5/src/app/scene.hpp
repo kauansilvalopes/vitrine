@@ -135,6 +135,11 @@ class ShelfScreen
     void menu_input(const hui::InputFrame &in, double now);
     void menu_apply(const MenuRow &row, int chip, double now);
     void draw_menu(GlCanvas &canvas, double now);
+    // Details (Square): app.js fillDetails(), with what the PS5 knows about the game
+    void open_details(double now);
+    void details_input(const hui::InputFrame &in, double now);
+    void draw_details(GlCanvas &canvas, double now);
+    std::vector<std::pair<std::string, std::string>> info_rows(const Item &item) const;
     float aside(double now) const; // how far the shelf has stepped aside, 0..1
     void update_covers(GlCanvas &canvas);
 
@@ -160,6 +165,8 @@ class ShelfScreen
     Glide qm_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};
     Glide qm_hl_{0.0f, 0.0f, -1.0, .32f, Bezier{.3f, .9f, .25f, 1.0f}, false}; // the white pill's row
     int qm_row_ = 0, qm_sub_ = -1, qm_chip_ = 0;
+    bool det_open_ = false;
+    Glide det_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};
     int art_request_ = 0;
     std::string art_status_;
     bool art_running_ = false, art_asked_ = false;

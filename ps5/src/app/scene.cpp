@@ -578,6 +578,11 @@ void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
 {
     if (qm_open_)
         return menu_input(in, now);
+    if (det_open_)
+        return details_input(in, now);
+    // Square: Details (PAD_HINTS)
+    if (in.is_pressed(hui::Action::west))
+        return open_details(now);
     // Options: a tap opens the menu, a hold opens it on Sort (PAD_HINTS: Menu, hold Sort)
     if (in.is_pressed(hui::Action::menu))
         menu_down_ = now;
@@ -1539,10 +1544,11 @@ void ShelfScreen::draw_hints(DrawList &list)
     };
     const Item *it = model_.item();
     const char *play = !it || it->kind == ItemKind::setup ? tr("Set up") : tr("Play");
-    // Only what works today (owner, 2026-11-10): Details, Inspect and Settings / Museum come back with their features.
+    // Only what works today (owner, 2026-11-10): Inspect and Settings / Museum come back with their features.
     const Hint hints[] = {
         {{"L2", "R2"}, tr("System"), nullptr},
         {{"tri", nullptr}, tr("Flip"), "\xe2\x99\xa5"},
+        {{"sq", nullptr}, tr("Details"), nullptr},
         {{"x", nullptr}, play, nullptr},
         {{"L3", nullptr}, tr("Shuffle"), nullptr},
         {{"menu", nullptr}, tr("Menu"), tr("Sort")},
@@ -1697,7 +1703,8 @@ void ShelfScreen::draw_empty(DrawList &list)
 
 float ShelfScreen::aside(double now) const
 {
-    return std::clamp(qm_.at(now), 0.0f, 1.0f);
+    // the menu and Details move the shelf aside the same way (#app.details-open #scene, #app.qm-open #scene)
+    return std::clamp(std::max(qm_.at(now), det_.at(now)), 0.0f, 1.0f);
 }
 
 void ShelfScreen::open_menu(double now)
@@ -2026,6 +2033,261 @@ void ShelfScreen::draw_menu(GlCanvas &canvas, double now)
          16.0f);
 }
 
+// ---- Details (Square) ---------------------------------------------------------------------------------------
+
+std::vector<std::pair<std::string, std::string>> ShelfScreen::info_rows(const Item &item) const
+{
+    // app.js infoRows(), with what the PS5 knows: the made-up back shows the same facts
+    std::vector<std::pair<std::string, std::string>> rows;
+    const auto &g = item.game;
+    if (g.path.rfind("/appdb/", 0) == 0)
+    {
+        const std::string from = g.id.substr(0, g.id.find(':'));
+        rows.push_back({tr("Type"), from == "media"    ? std::string(tr("Streaming app"))
+                                    : from == "custom" ? std::string(tr("Homebrew"))
+                                                       : trf("%s game", from == "ps4" ? "PS4" : "PS5")});
+        rows.push_back({tr("Title ID"), g.app.empty() ? std::string(tr("Unknown")) : g.app});
+        return rows;
+    }
+    rows.push_back({tr("Region"), g.region.empty() ? std::string(tr("Unknown")) : g.region});
+    std::string file = tr("Folder");
+    if (!g.folder)
+    {
+        const auto dot = g.path.find_last_of('.');
+        file = dot == std::string::npos ? std::string(tr("File")) : upper(g.path.substr(dot + 1));
+    }
+    rows.push_back({tr("Format"), file});
+    rows.push_back({tr("Emulator"), emulator_name(item.system)});
+    if (!g.disc_id.empty())
+        rows.push_back({tr("Serial"), g.disc_id});
+    rows.push_back({tr("File"), g.path}); // wide
+    return rows;
+}
+
+void ShelfScreen::open_details(double now)
+{
+    const Item *it = model_.item();
+    if (!it || it->kind != ItemKind::game)
+        return;
+    det_open_ = true;
+    det_.set(1.0f, now);
+    set_flipped(false, now);
+}
+
+void ShelfScreen::details_input(const hui::InputFrame &in, double now)
+{
+    // ← → another game with the panel open; ✕ Play; △ Favorite; ○ / □ close (app.js details mode)
+    if (in.is_pressed(hui::Action::back) || in.is_pressed(hui::Action::west) || in.is_pressed(hui::Action::menu))
+    {
+        det_open_ = false;
+        det_.set(0.0f, now);
+        return;
+    }
+    if (in.nav == hui::Direction::left && model_.step(-1))
+        on_moved(now);
+    else if (in.nav == hui::Direction::right && model_.step(1))
+        on_moved(now);
+    if (in.is_pressed(hui::Action::confirm))
+        play(now);
+    if (in.is_pressed(hui::Action::north))
+        toggle_favorite(now);
+}
+
+void ShelfScreen::draw_details(GlCanvas &canvas, double now)
+{
+    const float t = det_.at(now);
+    if (t <= 0.001f && !det_open_)
+        return;
+    const Item *it = model_.item();
+    if (!it || it->kind != ItemKind::game)
+        return;
+    DrawList &list = canvas.list();
+    const auto &g = it->game;
+    // .details: width 460 from the right, rgba(8,10,18,.74) over a blur (a little more opaque here), --line on the left
+    const float pw = 460.0f, px = W - pw * t + (1.0f - t) * pw * .04f;
+    list.rounded_rect({px, 0, pw, H}, 0, Color{8 / 255.f, 10 / 255.f, 18 / 255.f, .95f});
+    list.rounded_rect({px, 0, 1, H}, 0, kLine);
+    list.push_clip({px, 0, pw, H});
+
+    // .d-hero: min-height 200, padding 34 28 22; the cover as a dark backdrop (brightness .55) under a gradient
+    const std::uint32_t cover = cover_texture(canvas, *it);
+    const float hero_h = 232.0f;
+    {
+        // .d-hero-bg is the cover blurred (28px) and darkened (.55): drawn here as a wash in the game's own hue (the
+        // colour the shelf's backdrop takes from it), since there is no blur pass
+        const float hue = static_cast<float>(it->hue);
+        list.linear_gradient({px, 0, pw, hero_h}, 160.0f, hsl(hue, 55, 30), hsl(hue + 30, 50, 10));
+        list.radial_gradient({px, 0, pw, hero_h}, px + pw * .3f, hero_h * .35f, pw * .7f, hero_h * .8f,
+                             hsl(hue + 10, 70, 45, .55f), transparent(hsl(hue + 10, 70, 45)), 0.0f, 1.0f);
+    }
+    list.gradient_rect({px, 0, pw, hero_h}, 0, Color{8 / 255.f, 10 / 255.f, 18 / 255.f, .1f},
+                       Color{9 / 255.f, 11 / 255.f, 19 / 255.f, .9f});
+    list.rounded_rect({px, hero_h - 1, pw, 1}, 0, kLine);
+    // .d-hero-row: the cover 96 wide (its own case's proportions), the head beside it, both on the bottom line
+    const auto &st = data::style(it->system);
+    const float cw = 96.0f, ch = std::min(150.0f, cw / st.ratio), cx = px + 28.0f, cy = hero_h - 22.0f - ch;
+    list.shadow({cx, cy + 14, cw, ch}, 6, 30, Color{0, 0, 0, .6f});
+    if (cover)
+        list.image(cover, {cx, cy, cw, ch}, hui::gfx::kFullUv, Color{1, 1, 1, 1}, 6.0f);
+    const float hx = cx + cw + 18.0f, hw = px + pw - 28.0f - hx;
+    // .d-kicker: "GameCube · 3 of 12", 11px .22em uppercase dim; .d-title 30px 600, two lines at most
+    int nth = 0, games_n = 0;
+    for (std::size_t i = 0; i < model_.cur().items.size(); ++i)
+        if (model_.cur().items[i].kind == ItemKind::game)
+        {
+            ++games_n;
+            if (static_cast<int>(i) == model_.selected())
+                nth = games_n;
+        }
+    const std::string kicker = std::string(tab_name(it->system)) + " \xc2\xb7 " +
+                               trf("%s of", std::to_string(nth)) + " " + std::to_string(games_n);
+    auto lines = wrap_lines(Face::lexend600, it->title, 30.0f, hw);
+    if (lines.size() > 2)
+    {
+        lines.resize(2);
+        while (!lines[1].empty() && measure(Face::lexend600, lines[1] + "\xe2\x80\xa6", 30.0f) > hw)
+            lines[1].pop_back();
+        lines[1] += "\xe2\x80\xa6";
+    }
+    const float title_h = 35.0f * static_cast<float>(lines.size());
+    float ty = hero_h - 22.0f - 28.0f - title_h - 8.0f - 14.0f;
+    text(list, Face::lexend500, upper(kicker), hx, ty, 11.0f, kInkDim, Align::left, .22f, 14.0f);
+    ty += 14.0f + 8.0f;
+    for (const auto &l : lines)
+    {
+        text(list, Face::lexend600, l, hx, ty, 30.0f, kInk, Align::left, 0.0f, 35.0f);
+        ty += 35.0f;
+    }
+    // .d-chips: .chipx 11px 600, 4px 9px, rgba(255,255,255,.1), 1px rgba(255,255,255,.14)
+    {
+        std::vector<std::string> chips;
+        const auto dot = g.path.find_last_of('.');
+        if (!g.folder && dot != std::string::npos && g.path.size() - dot <= 6 && g.path.rfind("/appdb/", 0) != 0)
+            chips.push_back(upper(g.path.substr(dot + 1)));
+        if (settings_.is_favorite(g.id))
+            chips.push_back(tr("Favorite"));
+        float chx = hx;
+        const float chy = ty + 6.0f;
+        for (const auto &c : chips)
+        {
+            const float w = measure(Face::lexend600, c, 11.0f, .04f) + 18.0f;
+            list.bordered_rect({chx, chy, w, 22}, 11, Color{1, 1, 1, .1f}, 1.0f, Color{1, 1, 1, .14f});
+            text(list, Face::lexend600, c, chx + 9, chy + 4, 11.0f, kInk, Align::left, .04f, 14.0f);
+            chx += w + 6.0f;
+        }
+    }
+
+    // .d-stats: your history with the game, as tiles (Last played, Launches)
+    float y = hero_h + 18.0f;
+    {
+        const auto *h = settings_.history_of(g.id);
+        std::string last = tr("Never");
+        if (h && h->count > 0)
+        {
+            const long long days = (static_cast<long long>(std::time(nullptr)) - h->last) / 86400;
+            last = days <= 0 ? tr("Today") : days == 1 ? tr("Yesterday") : trf("%s days ago", std::to_string(days));
+        }
+        const std::pair<std::string, std::string> stats[] = {{tr("Last time"), last},
+                                                             {tr("Launches"), std::to_string(h ? h->count : 0)}};
+        const float sw = (pw - 56.0f - 8.0f) * .5f;
+        for (int i = 0; i < 2; ++i)
+        {
+            const float sx = px + 28.0f + i * (sw + 8.0f);
+            list.bordered_rect({sx, y, sw, 56}, 12, Color{1, 1, 1, .05f}, 1.0f, kLine);
+            text(list, Face::lexend500, upper(stats[i].first), sx + 12, y + 10, 10.0f, kInkDim, Align::left, .14f, 13.0f);
+            text(list, Face::lexend600, stats[i].second, sx + 12, y + 27, 16.0f, kInk, Align::left, 0.0f, 20.0f);
+        }
+        y += 56.0f + 22.0f;
+    }
+
+    // Game info (.d-sec, then the .d-grid boxes: two columns, the file path across both)
+    text(list, Face::lexend500, upper(tr("Game info")), px + 28, y, 11.0f, Color{243 / 255.f, 245 / 255.f, 251 / 255.f, .42f},
+         Align::left, .16f, 14.0f);
+    y += 14.0f + 10.0f;
+    {
+        const float gw = (pw - 56.0f - 8.0f) * .5f;
+        int col = 0;
+        for (const auto &[k, v] : info_rows(*it))
+        {
+            const bool wide = k == tr("File");
+            if (wide && col == 1)
+                col = 0, y += 52.0f + 8.0f;
+            const float bx = px + 28.0f + (wide ? 0.0f : col * (gw + 8.0f)), bw = wide ? pw - 56.0f : gw;
+            std::string value = v;
+            const float room = bw - 24.0f;
+            // a long path keeps its end (the file name)
+            while (value.size() > 4 && measure(Face::lexend500, value, 13.0f) > room)
+            {
+                value.erase(0, 1);
+                while (!value.empty() && (static_cast<unsigned char>(value[0]) & 0xc0) == 0x80)
+                    value.erase(0, 1);
+            }
+            if (value != v)
+                value = "\xe2\x80\xa6" + value;
+            list.bordered_rect({bx, y, bw, 52}, 12, Color{1, 1, 1, .05f}, 1.0f, kLine);
+            text(list, Face::lexend500, upper(k), bx + 12, y + 9, 10.0f, kInkDim, Align::left, .14f, 13.0f);
+            text(list, Face::lexend500, value, bx + 12, y + 26, 13.0f, kInk, Align::left, 0.0f, 17.0f);
+            if (wide || ++col == 2)
+                col = 0, y += 52.0f + 8.0f;
+        }
+        if (col == 1)
+            y += 52.0f + 8.0f;
+    }
+
+    // Your copy: which pictures are here (.d-art-chip, solid green when there)
+    y += 10.0f;
+    text(list, Face::lexend500, upper(tr("Your copy")), px + 28, y, 11.0f, Color{243 / 255.f, 245 / 255.f, 251 / 255.f, .42f},
+         Align::left, .16f, 14.0f);
+    y += 14.0f + 10.0f;
+    {
+        const bool front = !g.cover_front.empty() && !g.cover_square, back = !g.cover_back.empty();
+        const std::pair<const char *, bool> parts[] = {{"Front cover", front}, {"Back cover", back}};
+        float chx = px + 28.0f;
+        for (const auto &[label, ok] : parts)
+        {
+            const std::string s = std::string(ok ? "\xe2\x9c\x93 " : "") + tr(label);
+            const float w = measure(Face::lexend500, s, 12.0f) + 20.0f;
+            if (ok)
+                list.bordered_rect({chx, y, w, 24}, 12, Color{95 / 255.f, 224 / 255.f, 160 / 255.f, .08f}, 1.0f,
+                                   Color{95 / 255.f, 224 / 255.f, 160 / 255.f, .45f});
+            else
+                list.bordered_rect({chx, y, w, 24}, 12, Color{0, 0, 0, 0}, 1.0f, Color{1, 1, 1, .22f});
+            text(list, Face::lexend500, s, chx + 10, y + 4, 12.0f, ok ? rgb(0xbff3d8) : kInkDim, Align::left, 0.0f, 16.0f);
+            chx += w + 6.0f;
+        }
+        y += 24.0f + 16.0f;
+    }
+    // .d-how: "Plays in PS5SX2. Close the emulator to come back here."
+    if (g.path.rfind("/appdb/", 0) != 0)
+        text(list, Face::lexend500, trf("Plays in %s. Close the emulator to come back here.", emulator_name(it->system)),
+             px + 28, y, 12.0f, kInkDim, Align::left, 0.0f, 18.0f);
+
+    // .d-actions (sticky at the bottom): Play across, Favorite under it, each with its button
+    {
+        const float ah = 16.0f + 40.0f + 8.0f + 40.0f + 22.0f, ay = H - ah;
+        list.rounded_rect({px, ay, pw, ah}, 0, Color{10 / 255.f, 12 / 255.f, 20 / 255.f, .97f});
+        list.rounded_rect({px, ay, pw, 1}, 0, kLine);
+        const float bx = px + 28.0f, bw = pw - 56.0f;
+        // .btn.primary: --ink background, #10121a text, 13px 600, round
+        list.rounded_rect({bx, ay + 16, bw, 40}, 20, kInk);
+        const std::string play = tr("Play");
+        const float pwid = measure(Face::lexend600, play, 13.0f) + 20.0f;
+        const float pxs = bx + (bw - pwid) * .5f, pcy = ay + 16 + 20;
+        list.line(pxs, pcy - 5, pxs + 10, pcy + 5, 1.8f, rgb(0x10121a));
+        list.line(pxs + 10, pcy - 5, pxs, pcy + 5, 1.8f, rgb(0x10121a));
+        text(list, Face::lexend600, play, pxs + 20, ay + 16 + 11, 13.0f, rgb(0x10121a), Align::left, 0.0f, 18.0f);
+        const bool fav = settings_.is_favorite(g.id);
+        const float fy = ay + 16 + 40 + 8;
+        list.bordered_rect({bx, fy, bw, 40}, 20, Color{0, 0, 0, 0}, 1.0f, kLine);
+        const std::string fl = fav ? tr("Remove from favorites") : tr("Add to favorites");
+        const float fwid = measure(Face::lexend600, fl, 13.0f) + 22.0f;
+        const float fxs = bx + (bw - fwid) * .5f, fcy = fy + 20;
+        list.triangle({fxs, fcy - 6.0f, 12.0f, 11.0f}, rgb(0x3fd0b6), 1.6f);
+        text(list, Face::lexend600, fl, fxs + 22, fy + 11, 13.0f, kInk, Align::left, 0.0f, 18.0f);
+    }
+    list.pop_clip();
+}
+
 void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
 {
     if (!model_.empty() && shown_shelf_ != model_.current())
@@ -2057,6 +2319,7 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
         draw_hints(hud);
         hud.pop_opacity();
     }
+    draw_details(canvas, now);
     draw_menu(canvas, now);
     draw_toast(hud, now);
 }

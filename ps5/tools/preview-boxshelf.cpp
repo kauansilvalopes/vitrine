@@ -310,7 +310,7 @@ int main(int argc, char **argv)
     std::string mode = argv[2];
     // <mode>-flip: the selected case turned round (Triangle), <mode>-turn: caught mid-turn
     int flip = 0;
-    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}, {"-menu", 4}})
+    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}, {"-menu", 4}, {"-details", 5}})
         if (mode.size() > std::strlen(suffix) && mode.compare(mode.size() - std::strlen(suffix), std::string::npos, suffix) == 0)
             flip = kind, mode.resize(mode.size() - std::strlen(suffix));
     // BOXSHELF_LANG=pt|es: the interface language
@@ -520,6 +520,13 @@ int main(int argc, char **argv)
             if (frame > 2 && screen.covers_pending() == 0)
                 break;
             usleep(16000);
+        }
+        if (flip == 5)
+        {
+            press(screen, now, hui::Action::west); // Square: Details
+            host.render(screen, now + 0.2);
+            host.render(screen, now + 1.0);
+            return host.write_ppm(argv[1]) ? 0 : 3;
         }
         if (flip == 4)
         {
