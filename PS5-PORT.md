@@ -134,8 +134,8 @@ Default if B is not clearly viable within the spike: **A**. Write the decision a
 - PS5 OS address changes (DHCP); on 2026-11-10 it was `192.168.2.120` (scan `192.168.2.0/24` for port 6969 if it
   moved). Elf Arsenal `:6969`, FTP `:2121`, payload loader `:9021`.
 - The external HD (exFAT) is `/mnt/usb0` (number may change). Layout (EmuDeck/Bazzite style, shared with the owner's
-  Linux side): `Emulation/bios/{ps2,ps1,nds,switch/{keys,firmware}}`, `Emulation/roms/{ps2,psx,gc,wii,switch,wiiu,3ds,nds}`,
-  `Emulation/switch-extras/{updates,…}` (updates/DLC, never games), `Emulation/LEIA-ME.txt`. No symlinks on exFAT.
+  Linux side): `Emulation/bios/{ps2,ps1,nds,switch/{keys,firmware}}`, `Emulation/roms/{ps2,psx,gc,wii,wiiu,3ds,nds}`, **Switch lives in `Emulation/eden/{keys,firmware,roms/<Game>/}`** (ProsperoEden's required
+  layout: one folder per game with its update/DLC `.nsp` files beside the game), `Emulation/LEIA-ME.txt`. No symlinks on exFAT.
   PS1 games are one folder per game (`.cue/.bin/.chd`); Switch games are one folder per game containing the `.nsp`.
 - Existing PS5 emulator apps (not yours; do not modify): PS5SX2 PPSA99203 (PS2), SwanStationPS5 PPSA98510 (PS1),
   Porpoise PPSA99764 (GameCube/Wii), PS5-ECAM PPSA99360 (Wii U/3DS/DS), ProsperoEden PPSA99008 (Switch),
