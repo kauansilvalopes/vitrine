@@ -180,9 +180,9 @@ static void test_appdb_and_shelves()
     CHECK_EQ(apps.size(), 4u);
     CHECK(apps.size() == 4 && apps[0].system == System::ps5 && apps[0].title == "Big Game");
     CHECK(apps.size() == 4 && apps[1].system == System::ps4);
-    CHECK(apps.size() == 4 && apps[2].system == System::media && apps[2].app == "PPSA99841");
+    CHECK(apps.size() == 4 && apps[2].system == System::custom && apps[2].app == "PPSA99841");
     CHECK(apps.size() == 4 && apps[3].title == "PPSA02222"); // no name: the id
-    // homebrew ports -> Custom; streaming apps -> Media
+    // homebrew apps and ports -> Others (System::custom); streaming apps -> Media
     const auto more = games_from_appdb(
         R"({"titles":[{"titleId":"PPSA90212","titleName":"A Port"},{"titleId":"PPSA01651","titleName":"YouTube"}]})");
     CHECK(more.size() == 2 && more[0].system == System::custom && more[1].system == System::media);
@@ -193,9 +193,9 @@ static void test_appdb_and_shelves()
         all.push_back(g);
     all.push_back(all.back()); // the same path twice (two roots pointing at one folder)
     const auto shelves = build_shelves(all);
-    // Order: Home, then the console order of main/systems.js, Media last.
+    // Order: Home, then the console order of main/systems.js, Others, Media last.
     CHECK(!shelves.empty() && shelves.front().system == System::home);
-    CHECK(!shelves.empty() && shelves.back().system == System::media);
+    CHECK(!shelves.empty() && shelves.back().system == System::custom); // no streaming app here: Others is last
     const Shelf *p2 = nullptr;
     bool has_psp = false, has_ps4 = false;
     for (const auto &s : shelves)

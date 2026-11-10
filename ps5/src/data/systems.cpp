@@ -29,7 +29,7 @@ constexpr CaseStyle kStyles[kSystemCount] = {
     {S::psx,  "psx",   .012f, .06f, 220, 1.136f,.073f, .02f,  .7f, false, 0x121216, 0x08080a, 0xffffff, false,{0, 0, ""},                        {0x0a0a0c, 0xffffff, "PlayStation"}, 0x3b3f4f, 0x0c0d12, 0xc7cde0, "PlayStation","Home console"},
     {S::nds,  "nds",   .05f,  .24f, 0,   .9f,   .1f,   .03f,  1,  false, 0xf4f4f6, 0xdcdde2, 0x3a3d45, true, {0xffffff, 0x3a3d45, "NINTENDO DS"},  {0xffffff, 0x3a3d45, "DS"},          0x5a5f6e, 0x15161b, 0xd9dde8, "DS",         "Handheld"},
     // app.js custom: the PC case in a warm tint, band:null, spine label "PC"
-    {S::custom,"custom",.02f, .16f, 28,  .667f, .07f,  .015f, 1,  false, 0x211b17, 0x15110e, 0xf3e6da, false,{0, 0, ""},                        {0x15110e, 0xe0a878, "PC"},          0x6e3f1d, 0x1c120a, 0xffbf8a, "Custom",     "PC ports & recomps"},
+    {S::custom,"custom",.02f, .16f, 28,  .667f, .07f,  .015f, 1,  false, 0x211b17, 0x15110e, 0xf3e6da, false,{0, 0, ""},                        {0x15110e, 0xe0a878, "APP"},         0x6e3f1d, 0x1c120a, 0xffbf8a, "Others",     "Apps & ports"},
     {S::media,"media", .03f,  .18f, 285, .71f,  .06f,  .02f,  1,  false, 0x1a1c24, 0x0e0f14, 0xe8e8f0, true, {0x1a1c24, 0x9aa3b8, "APP"},          {0x2a2d38, 0xc8cede, "APP"},         0x2a3550, 0x0a0d16, 0xb9a6ff, "Media",      "Streaming"},
 };
 // clang-format on

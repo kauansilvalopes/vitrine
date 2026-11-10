@@ -40,7 +40,8 @@ struct Shelf
 // The emulator app a console shelf opens, as Boxshelf words it ("Open Dolphin").
 const char *emulator_name(data::System system);
 
-// app.js prepare(): the shelf's items in order (Surprise me, Open <emulator>, Add games, then the games).
+// app.js prepare(): the shelf's items ("Add games" on an empty console shelf, then the games; the owner dropped
+// Surprise me and the Open <emulator> tiles).
 Shelf prepare_shelf(const data::Shelf &shelf, bool emulator_installed);
 
 class ShelfModel

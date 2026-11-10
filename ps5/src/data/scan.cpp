@@ -448,7 +448,8 @@ bool parse_fs_list(std::string_view json, std::vector<DirEntry> &out)
 
 bool is_homebrew_app(std::string_view tid) noexcept
 {
-    // Homebrew that is a tool or an emulator, not a game (the rest of PPSA9xxxx are ports: the Custom shelf).
+    // Homebrew that is a tool or an emulator, not a game. Both these and the ports (the rest of PPSA9xxxx) go to the
+    // Others shelf (owner, 2026-11-10); the flag still tells apps from games there.
     static constexpr std::string_view apps[] = {
         "PPSA99841", // Estante
         "PPSA99842", // Trophy Manager
@@ -492,7 +493,7 @@ std::vector<Game> games_from_appdb(std::string_view json)
         if (tid.substr(0, 4) == "CUSA")
             system = System::ps4;
         else if (tid.substr(0, 4) == "PPSA")
-            system = tid[4] == '9' ? (is_homebrew_app(tid) ? System::media : System::custom) : System::ps5;
+            system = tid[4] == '9' ? System::custom : System::ps5;
         if (is_streaming_app(tid))
             system = System::media;
         if (system == System::count)

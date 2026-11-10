@@ -58,22 +58,18 @@ static void test_place()
 
 static void test_prepare()
 {
-    // [Surprise me, Open <emulator>, games] for a console with 2+ games (app.js prepare unshift order)
+    // owner's decision: only the games on a console shelf (no Surprise me, no Open <emulator>)
     const Shelf gc = prepare_shelf(shelf_of(System::gc, {"Alpha", "Beta"}), true);
-    CHECK(gc.items.size() == 4);
-    CHECK(gc.items[0].kind == ItemKind::random && gc.items[0].title == "Surprise me" && gc.items[0].hue == 300);
-    CHECK(gc.items[1].kind == ItemKind::emulator && gc.items[1].title == "Open Porpoise");
-    CHECK(gc.items[2].kind == ItemKind::game && gc.items[2].title == "Alpha");
+    CHECK(gc.items.size() == 2);
+    CHECK(gc.items[0].kind == ItemKind::game && gc.items[0].title == "Alpha");
     CHECK(gc.game_count == 2);
-    // one game: no Surprise me; emulator missing: no Open tile
     const Shelf one = prepare_shelf(shelf_of(System::ps2, {"Solo"}), false);
     CHECK(one.items.size() == 1 && one.items[0].kind == ItemKind::game);
-    // empty console shelf: [Add games, Open <emulator>]
+    // empty console shelf: [Add games]
     const Shelf none = prepare_shelf(shelf_of(System::nds, {}), true);
-    CHECK(none.items.size() == 2 && none.items[0].kind == ItemKind::setup && none.items[0].hue == 210);
-    CHECK(none.items[1].kind == ItemKind::emulator);
+    CHECK(none.items.size() == 1 && none.items[0].kind == ItemKind::setup && none.items[0].hue == 210);
     // a game's hue is covers.js hash(title) % 360
-    CHECK(gc.items[2].hue == static_cast<int>(title_hash("Alpha") % 360));
+    CHECK(gc.items[0].hue == static_cast<int>(title_hash("Alpha") % 360));
     // the PS5 shelf (no emulator) gets no tiles
     const Shelf ps5 = prepare_shelf(shelf_of(System::ps5, {"A", "B", "C"}), true);
     CHECK(ps5.items.size() == 3);
@@ -90,25 +86,25 @@ static void test_model()
     CHECK(!m.go(0));
     CHECK(m.step(1) && m.selected() == 1);
     CHECK(!m.go(-5) || m.selected() == 0);
-    CHECK(m.go(100) && m.selected() == 6); // clamped to the last item
-    // sections: [• •] [A A] [B] [C] [#]  (tiles are "•", digits "#")
+    CHECK(m.go(100) && m.selected() == 4); // clamped to the last item
+    // sections: [A A] [B] [C] [#]  (digits "#")
     m.go(0);
     std::string label;
-    CHECK(m.letter(1, &label) && m.selected() == 2 && label == "A");
-    CHECK(m.letter(1, &label) && m.selected() == 4 && label == "B");
-    m.go(5);                                                  // in "C"
-    CHECK(m.letter(-1, &label) && m.selected() == 4);         // previous section's start
-    m.go(3);                                                  // second "A"
-    CHECK(m.letter(-1, &label) && m.selected() == 2);         // back to the start of its own section
-    m.go(6);
-    CHECK(m.letter(1, &label) && m.selected() == 0 && label == "\xe2\x80\xa2"); // wraps to the tiles
+    CHECK(m.letter(1, &label) && m.selected() == 2 && label == "B");
+    CHECK(m.letter(1, &label) && m.selected() == 3 && label == "C");
+    m.go(3);                                                  // in "C"
+    CHECK(m.letter(-1, &label) && m.selected() == 2);         // previous section's start
+    m.go(1);                                                  // second "A"
+    CHECK(m.letter(-1, &label) && m.selected() == 0);         // back to the start of its own section
+    m.go(4);
+    CHECK(m.letter(1, &label) && m.selected() == 0 && label == "A"); // wraps to the start
     // each shelf keeps its own place; switching wraps
     m.go(3);
     CHECK(m.switch_shelf(1) && m.current() == 1 && m.selected() == 0);
     CHECK(m.switch_shelf(1) && m.current() == 0 && m.selected() == 3);
     CHECK(m.switch_shelf(-1) && m.current() == 1);
     NEAR(m.position(), 0.0f);
-    m.go(2); // [Surprise me, Wii One, Wii Two]
+    m.go(1); // [Wii One, Wii Two]
     NEAR(m.position(), 1.0f);
 }
 

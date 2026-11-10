@@ -161,7 +161,7 @@ const char *tab_name(data::System s)
     case System::n3ds: return "3DS";
     case System::psx: return "PlayStation";
     case System::nds: return "DS";
-    case System::custom: return "Custom";
+    case System::custom: return "Others";
     case System::media: return "Media";
     default: return "";
     }

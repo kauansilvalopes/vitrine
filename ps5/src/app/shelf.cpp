@@ -54,18 +54,12 @@ Shelf prepare_shelf(const data::Shelf &shelf, bool emulator_installed)
     out.game_count = static_cast<int>(shelf.games.size());
     const bool console = !data::emulator_app(shelf.system).empty();
     const std::string key(data::style(shelf.system).key);
-    // items.unshift order in app.js: emulator, then setup, then random -> [random?, setup?, emulator?, games...]
-    if (console && out.game_count > 1)
-        out.items.push_back(tile(ItemKind::random, "Surprise me", "random" + key, 300, shelf.system));
+    // Owner's decision (2026-11-10), a deviation from app.js prepare(): no "Surprise me" and no "Open <emulator>"
+    // tile on the console shelves; the emulators are apps on the Others shelf. An empty console shelf keeps
+    // "Add games" so it is not blank.
+    (void)emulator_installed;
     if (console && out.game_count == 0)
         out.items.push_back(tile(ItemKind::setup, "Add games", "setup" + key, 210, shelf.system));
-    if (console && emulator_installed)
-    {
-        const std::string t = std::string("Open ") + emulator_name(shelf.system);
-        Item it = tile(ItemKind::emulator, t, t + key, 0, shelf.system);
-        it.hue = static_cast<int>(it.seed % 360);
-        out.items.push_back(std::move(it));
-    }
     for (const auto &g : shelf.games)
     {
         Item it;
