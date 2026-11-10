@@ -169,7 +169,9 @@ void LibraryLoader::work()
         struct stat st
         {
         };
-        const std::string local = downloaded_cover_path(g.id);
+        const std::string local = downloaded_cover_path(g.id), back = downloaded_back_path(g.id);
+        if (g.cover_back.empty() && stat(back.c_str(), &st) == 0 && st.st_size > 0)
+            g.cover_back = back;
         if (!own && stat(local.c_str(), &st) == 0 && st.st_size > 0)
         {
             if (!g.cover_front.empty())
@@ -177,15 +179,10 @@ void LibraryLoader::work()
             g.cover_front = local;
             g.cover_square = false;
             ++covered;
-            continue;
         }
-        // nothing of Boxshelf's own yet: ask the sources Boxshelf uses (libretro has no PS5 or apps)
-        const std::string key(style(g.system).key);
-        const bool source = !data::libretro_system(key).empty() || !data::gametdb_art(key).empty() ||
-                            g.system == System::gc || g.system == System::wii;
-        if (!own && source)
-            jobs_.push_back({g.id, key, g.title, g.region, g.disc_id});
     }
+    // what is still missing: asked of the sources Boxshelf uses (libretro has no PS5 or apps)
+    jobs_ = art_jobs(games, false);
     hui::sys::log("[BOXSHELF] library: box art matched for %d of %zu games", covered, games.size());
     std::vector<Shelf> shelves;
     for (const auto &s : build_shelves(games))

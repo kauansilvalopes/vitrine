@@ -96,6 +96,17 @@ class ShelfScreen
         return qm_open_;
     }
     void open_menu(double now);
+    // Settings → Box art: 1 find what is missing, 2 download everything again; 0 when nothing was asked. Once.
+    int take_art_request()
+    {
+        const int r = art_request_;
+        art_request_ = 0;
+        return r;
+    }
+    // The art fetcher's progress ("12 / 60", "" when idle), shown in the toast and in the menu.
+    void set_art_status(const std::string &status, bool running, double now);
+    // All the games on the shelves (for a new box art run).
+    std::vector<data::Game> games() const;
 
   private:
     void toast(const std::string &message, bool working, bool done, double now);
@@ -135,6 +146,9 @@ class ShelfScreen
     Glide qm_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};
     Glide qm_hl_{0.0f, 0.0f, -1.0, .32f, Bezier{.3f, .9f, .25f, 1.0f}, false}; // the white pill's row
     int qm_row_ = 0, qm_sub_ = -1, qm_chip_ = 0;
+    int art_request_ = 0;
+    std::string art_status_;
+    bool art_running_ = false, art_asked_ = false;
     // Cross: Play. The launch runs on its own thread; its messages show in .toast (style.css).
     Launcher launcher_;
     unsigned launch_serial_ = 0;

@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <cstdio>
 #include <set>
 
@@ -515,8 +516,10 @@ std::string_view gametdb_art(std::string_view key)
     return key == "sw" ? "switch" : key == "n3ds" ? "3ds" : std::string_view{};
 }
 
-std::vector<std::string> gametdb_front_urls(const std::vector<TdbGame> &db, std::string_view system_key,
-                                            std::string_view title)
+namespace
+{
+std::vector<std::string> gametdb_urls(const std::vector<TdbGame> &db, std::string_view system_key, std::string_view title,
+                                      std::initializer_list<const char *> kinds)
 {
     std::vector<std::string> out;
     const std::string art(gametdb_art(system_key));
@@ -552,7 +555,7 @@ std::vector<std::string> gametdb_front_urls(const std::vector<TdbGame> &db, std:
     });
     for (const TdbGame *g : hits)
         for (const auto &r : regions(g->region))
-            for (const char *kind : {"coverHQ", "cover"})
+            for (const char *kind : kinds)
             {
                 std::string url = "https://art.gametdb.com/" + art + "/" + kind + "/" + r + "/" + g->id + ".jpg";
                 if (std::find(out.begin(), out.end(), url) == out.end())
@@ -561,6 +564,19 @@ std::vector<std::string> gametdb_front_urls(const std::vector<TdbGame> &db, std:
     if (out.size() > 8)
         out.resize(8);
     return out;
+}
+} // namespace
+
+std::vector<std::string> gametdb_front_urls(const std::vector<TdbGame> &db, std::string_view system_key,
+                                            std::string_view title)
+{
+    return gametdb_urls(db, system_key, title, {"coverHQ", "cover"});
+}
+
+std::vector<std::string> gametdb_full_urls(const std::vector<TdbGame> &db, std::string_view system_key,
+                                           std::string_view title)
+{
+    return gametdb_urls(db, system_key, title, {"coverfullHQ", "coverfull"});
 }
 
 std::string libretro_url(std::string_view system_key, std::string_view name)

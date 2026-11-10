@@ -114,6 +114,47 @@ std::string downloaded_cover_path(const std::string &game_id)
     return storage_root() + "/covers/" + data::cover_key(game_id) + ".jpg";
 }
 
+std::string downloaded_back_path(const std::string &game_id)
+{
+    return storage_root() + "/covers/" + data::cover_key(game_id) + "-back.jpg";
+}
+
+bool back_source(std::string_view key)
+{
+    return key == "gc" || key == "wii" || key == "sw" || key == "n3ds";
+}
+
+std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything)
+{
+    std::vector<ArtJob> jobs;
+    auto exists = [](const std::string &path)
+    {
+        struct stat st
+        {
+        };
+        return stat(path.c_str(), &st) == 0 && st.st_size > 0;
+    };
+    for (const auto &g : games)
+    {
+        // installed titles keep their store art (libretro and GameTDB have no PS5 boxes or apps)
+        if (g.path.rfind("/appdb/", 0) == 0)
+            continue;
+        const std::string key(data::style(g.system).key);
+        const bool source = !data::libretro_system(key).empty() || !data::gametdb_art(key).empty() ||
+                            g.system == data::System::gc || g.system == data::System::wii;
+        if (!source)
+            continue;
+        ArtJob j{g.id, key, g.title, g.region, g.disc_id};
+        const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
+        j.front = everything ? !own : !own && !exists(downloaded_cover_path(g.id));
+        const bool back_here = !g.cover_back.empty() && g.cover_back != downloaded_back_path(g.id);
+        j.back = back_source(key) && !back_here && (everything || !exists(downloaded_back_path(g.id)));
+        if (j.front || j.back)
+            jobs.push_back(std::move(j));
+    }
+    return jobs;
+}
+
 ArtFetcher::ArtFetcher()
 {
     pthread_mutex_init(&lock_, nullptr);
@@ -128,11 +169,89 @@ void ArtFetcher::start(std::vector<ArtJob> jobs)
         return;
     }
     started_ = true;
+    running_ = true;
     jobs_ = std::move(jobs);
     pthread_mutex_unlock(&lock_);
+    launch();
+}
+
+bool ArtFetcher::restart(std::vector<ArtJob> jobs)
+{
+    pthread_mutex_lock(&lock_);
+    if (running_)
+    {
+        pthread_mutex_unlock(&lock_);
+        return false;
+    }
+    started_ = running_ = true;
+    retry_misses_ = true;
+    jobs_ = std::move(jobs);
+    pthread_mutex_unlock(&lock_);
+    launch();
+    return true;
+}
+
+bool ArtFetcher::running()
+{
+    pthread_mutex_lock(&lock_);
+    const bool r = running_;
+    pthread_mutex_unlock(&lock_);
+    return r;
+}
+
+void ArtFetcher::launch()
+{
     pthread_t t;
     if (pthread_create(&t, nullptr, &ArtFetcher::run, this) == 0)
         pthread_detach(t);
+    else
+    {
+        pthread_mutex_lock(&lock_);
+        running_ = false;
+        pthread_mutex_unlock(&lock_);
+    }
+}
+
+bool ArtFetcher::fetch_back(const ArtJob &job)
+{
+    // GameTDB's full cover scan (back | spine | front), the back cut by the spine's folds (Boxshelf's cutBack). The
+    // case shapes are main.js CASE: front width and spine thickness relative to the height.
+    float front = .711f, spine = .074f;
+    std::vector<std::string> urls;
+    if ((job.system == "gc" || job.system == "wii") && job.disc_id.size() == 6)
+    {
+        for (const auto &r : tdb_regions(job.disc_id))
+            for (const char *kind : {"coverfullHQ", "coverfull"})
+                urls.push_back(std::string("https://art.gametdb.com/wii/") + kind + "/" + r + "/" + job.disc_id + ".png");
+    }
+    else if ((job.system == "sw" || job.system == "n3ds") && gametdb_ready(job.system))
+    {
+        if (job.system == "sw")
+            front = .618f, spine = .059f;
+        else
+            front = 1.127f, spine = .112f;
+        for (const auto &[k, db] : tdb_)
+            if (k == job.system)
+                urls = data::gametdb_full_urls(db, job.system, job.title);
+    }
+    for (const auto &url : urls)
+    {
+        std::string body, error, jpeg;
+        long status = 0;
+        if (!net::https_get(url, body, 24u << 20, &status, &error, 60000))
+            continue;
+        if (!art_back_to_jpeg(reinterpret_cast<const unsigned char *>(body.data()), body.size(), front, spine, 1200,
+                              append_jpeg, &jpeg))
+            continue;
+        const std::string path = downloaded_back_path(job.id);
+        if (!write_atomic(path, jpeg))
+            return false;
+        pthread_mutex_lock(&lock_);
+        done_.emplace_back(job.id + "|back", path);
+        pthread_mutex_unlock(&lock_);
+        return true;
+    }
+    return false;
 }
 
 std::vector<std::pair<std::string, std::string>> ArtFetcher::take()
@@ -330,15 +449,27 @@ void ArtFetcher::work()
         }
     }
     const long now = static_cast<long>(std::time(nullptr));
-    std::vector<ArtJob> jobs;
-    for (const auto &j : jobs_)
+    pthread_mutex_lock(&lock_);
+    const bool retry = retry_misses_;
+    std::vector<ArtJob> all = jobs_;
+    pthread_mutex_unlock(&lock_);
+    auto missed = [&](const std::string &key)
     {
-        const auto m = misses.find(data::cover_key(j.id));
-        if (m == misses.end() || now - m->second > kMissDays * 86400)
-            jobs.push_back(j);
+        const auto m = misses.find(key);
+        return !retry && m != misses.end() && now - m->second <= kMissDays * 86400;
+    };
+    std::vector<ArtJob> jobs;
+    for (auto j : all)
+    {
+        if (j.front && missed(data::cover_key(j.id)))
+            j.front = false;
+        if (j.back && missed(data::cover_key(j.id) + "-back"))
+            j.back = false;
+        if (j.front || j.back)
+            jobs.push_back(std::move(j));
     }
     hui::sys::log("[BOXSHELF] art: %zu games to look for (%zu skipped, not found this week)", jobs.size(),
-                  jobs_.size() - jobs.size());
+                  all.size() - jobs.size());
     net::https_init();
     std::map<std::string, std::vector<std::string>> lists;
     int found = 0, done = 0;
@@ -346,15 +477,22 @@ void ArtFetcher::work()
     {
         ++done;
         pthread_mutex_lock(&lock_);
-        status_ = "Box art " + std::to_string(done) + " / " + std::to_string(jobs.size());
+        status_ = std::to_string(done) + " / " + std::to_string(jobs.size());
         pthread_mutex_unlock(&lock_);
         const bool uses_libretro = !data::libretro_system(job.system).empty();
         const bool uses_tdb = !data::gametdb_art(job.system).empty();
         if (uses_libretro && !lists.count(job.system))
             lists[job.system] = libretro_names(job.system);
-        if (fetch_one(job, lists[job.system]))
+        if (job.back)
+        {
+            if (fetch_back(job))
+                ++found;
+            else if (job.system == "gc" || job.system == "wii" || gametdb_ready(job.system))
+                misses[data::cover_key(job.id) + "-back"] = now;
+        }
+        if (job.front && fetch_one(job, lists[job.system]))
             ++found;
-        else
+        else if (job.front)
         {
             // a "not found" only counts when every source this system uses could be asked: a list that failed
             // to download (network, a slow site) must not keep the game waiting a week
@@ -369,9 +507,11 @@ void ArtFetcher::work()
     for (const auto &[key, when] : misses)
         text += key + " " + std::to_string(when) + "\n";
     write_atomic(root + "/misses.txt", text);
-    hui::sys::log("[BOXSHELF] art: %d of %zu covers downloaded", found, jobs.size());
+    hui::sys::log("[BOXSHELF] art: %d pictures downloaded for %zu games", found, jobs.size());
     pthread_mutex_lock(&lock_);
     status_.clear();
+    found_ = found;
+    running_ = false;
     pthread_mutex_unlock(&lock_);
 }
 } // namespace boxshelf::app

@@ -370,6 +370,33 @@ void ShelfScreen::draw_toast(DrawList &list, double now)
          17.0f);
 }
 
+void ShelfScreen::set_art_status(const std::string &status, bool running, double now)
+{
+    const bool was = art_running_;
+    art_running_ = running;
+    if (running && status != art_status_ && !status.empty())
+        toast(trf("Box art %s", status), true, false, now);
+    else if (was && !running && art_asked_)
+        toast(tr("Box art up to date"), false, true, now);
+    if (was && !running)
+    {
+        art_asked_ = false;
+        if (!toast_.empty() && toast_work_ && !launcher_.busy())
+            toast_until_ = now; // the progress pill leaves
+    }
+    art_status_ = status;
+}
+
+std::vector<data::Game> ShelfScreen::games() const
+{
+    std::vector<data::Game> out;
+    for (int s = 0; s < model_.shelf_count(); ++s)
+        for (const auto &it : model_.shelf(s).items)
+            if (it.kind == ItemKind::game)
+                out.push_back(it.game);
+    return out;
+}
+
 void ShelfScreen::set_flipped(bool on, double now)
 {
     const Item *it = model_.item();
@@ -579,6 +606,24 @@ void ShelfScreen::draw_floor_and_halo(DrawList &list, double now)
 
 void ShelfScreen::art_arrived(const std::string &game_id, const std::string &path)
 {
+    const auto bar = game_id.rfind("|back");
+    if (bar != std::string::npos && bar + 5 == game_id.size())
+    {
+        // a back: the case shows it from its next turn
+        if (model_.set_back(game_id.substr(0, bar), path))
+        {
+            const auto it = art_.find(game_id);
+            if (it != art_.end())
+            {
+                stale_.push_back(std::move(it->second));
+                art_.erase(it);
+            }
+            art_missing_.erase(std::remove(art_missing_.begin(), art_missing_.end(), game_id), art_missing_.end());
+            loader_.forget(game_id);
+            wish_.clear();
+        }
+        return;
+    }
     if (model_.set_cover(game_id, path))
     {
         // the old picture (or the placeholder) goes; the next frame asks for the new one
@@ -1462,6 +1507,11 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
         }
         rows.push_back(std::move(r));
     }
+    {
+        MenuRow a{2, tr("Box art"), art_running_ ? trf("Downloading %s", art_status_) : std::string(tr("Up to date")),
+                  {tr("Find missing"), tr("Download all again")}, -1};
+        rows.push_back(std::move(a));
+    }
     MenuRow l{1, tr("Language"), language_name(language()), {}, 0};
     for (std::size_t i = 0; i < std::size(kLangs); ++i)
     {
@@ -1475,6 +1525,15 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
 
 void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
 {
+    if (row.kind == 2)
+    {
+        if (art_running_)
+            return toast(tr("Box art is already downloading"), false, false, now);
+        art_request_ = chip == 0 ? 1 : 2;
+        art_asked_ = true;
+        toast(chip == 0 ? tr("Looking for the missing box art") : tr("Downloading all the box art again"), true, false, now);
+        return;
+    }
     if (row.kind == 1)
     {
         set_language(kLangs[chip]);
@@ -1544,7 +1603,7 @@ void ShelfScreen::menu_input(const hui::InputFrame &in, double now)
     else if (in.is_pressed(hui::Action::confirm) || in.nav == hui::Direction::right)
     {
         qm_sub_ = qm_row_;
-        qm_chip_ = rows[static_cast<std::size_t>(qm_row_)].current;
+        qm_chip_ = std::max(0, rows[static_cast<std::size_t>(qm_row_)].current);
     }
     qm_hl_.set(static_cast<float>(qm_row_), now);
 }

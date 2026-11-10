@@ -88,6 +88,8 @@ class ShelfModel
     float position() const;
     // A game's new box art (the art fetcher's download): its picture becomes the fallback. False if not found.
     bool set_cover(const std::string &game_id, const std::string &path);
+    // A game's new back art (cut from a full cover scan). False if not found.
+    bool set_back(const std::string &game_id, const std::string &path);
     // The game item with this id on any shelf, or null.
     const Item *find(const std::string &game_id) const;
     // Puts a game on another shelf (made when missing, in the shelves' order; a shelf left empty goes). The view

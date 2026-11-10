@@ -396,3 +396,25 @@ a menu — I have two Zelda recomps, how would I put them on the right shelf?"**
   shows when a game is moved there (no N64 emulator on the PS5).
 - **Verified on:** unit tests (data 228/0, shelf 64/0 incl. move_item and the clock in 3 languages), PC preview
   (`real-custom-0-menu` in pt, Spectrum layer on `real-sw-4`), `make app` builds. **Not on the console yet.**
+
+## 2026-11-10 (late) — real backs, Box art in the menu
+
+**Owner: "why does the back have no art? There must be a setting to download the covers again or fetch the missing
+ones — some games have no cover."**
+- Backs, from where Boxshelf takes them (main/covers.js):
+  - **In the app** (automatic): GameTDB's full cover scan (back | spine | front) — GameCube/Wii by disc id
+    (coverfullHQ/coverfull), Switch/3DS by title (title databases) — with the back cut by Boxshelf's fold search
+    (img-tools.js spine(), part 'back', main.js CASE shapes), ported to C (`art_back_to_jpeg`). Saved as
+    `/download0/boxshelf/covers/<key>-back.jpg`; shown on △ Flip as they arrive.
+  - **PC tool** (LaunchBox "Box - Back", English-only regions first as Boxshelf does): `boxshelf_covers.py` now also
+    writes `<key>-back.jpg`; `upload-covers.py` sends them with the fronts; the app takes `/data/boxshelf/covers/
+    <key>-back.jpg` over an emulator's back. PS1/PS2/PS4/PS5 backs only come this way until LaunchBox runs on the
+    console.
+- Menu → **Box art**: "Find missing" (asks again for every front or back not here, ignoring the week of misses) and
+  "Download all again" (fetches everything again). Progress in the toast ("Box art 12 / 60"), "Box art up to date"
+  at the end; the row shows "Downloading …" while it runs.
+- **Verified on:** PC — host run of the app's fetcher on the owner's GC/Wii/Switch/3DS games: 12 of 16 backs
+  (GC 2/2, Wii 1/1, 3DS 4/5, Switch 6/8), every cut checked by eye against the scans; PC tool: 193 LaunchBox backs
+  for PS1/PS2/PS4/PS5 (checked a sample); preview `real-ps2-10-flip` shows Blade II's real back. Unit tests (data
+  228/0, shelf 64/0), `make app` builds. **Not on the console yet; the LaunchBox backs are on the PC until the owner
+  runs the upload.**

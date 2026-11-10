@@ -44,7 +44,9 @@ int main(int argc, char **argv)
             sys != "wii")
             continue;
         seen.insert(id);
-        jobs.push_back({id, sys, str("title"), str("region"), str("disc_id")});
+        boxshelf::app::ArtJob job{id, sys, str("title"), str("region"), str("disc_id")};
+        job.back = boxshelf::app::back_source(sys);
+        jobs.push_back(std::move(job));
     }
     cJSON_Delete(root);
     std::printf("%zu jobs\n", jobs.size());
@@ -56,7 +58,7 @@ int main(int argc, char **argv)
         usleep(200000);
         for (const auto &[id, path] : fetcher.take())
             std::printf("  got %s -> %s\n", id.c_str(), path.c_str()), ++got;
-        idle = fetcher.status().empty() ? idle + 1 : 0;
+        idle = fetcher.running() ? 0 : idle + 1;
     }
     std::printf("downloaded %d covers\n", got);
     return 0;

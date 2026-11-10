@@ -68,6 +68,10 @@ void draw(boxshelf::GlCanvas &canvas) noexcept
         screen.set_status(loader.status());
     for (const auto &[id, path] : art.take())
         screen.art_arrived(id, path);
+    // Settings → Box art: find what is missing, or download everything again
+    if (const int ask = screen.take_art_request())
+        art.restart(boxshelf::app::art_jobs(screen.games(), ask == 2));
+    screen.set_art_status(art.status(), art.running(), now);
     if (!pad_tried)
     {
         pad_tried = true;

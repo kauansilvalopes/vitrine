@@ -36,6 +36,9 @@ LAUNCHBOX = {"gc": "Nintendo GameCube", "wii": "Nintendo Wii", "psp": "Sony PSP"
 LB_ZIP = "https://gamesdb.launchbox-app.com/Metadata.zip"
 LB_IMG = "https://images.launchbox-app.com/"
 FRONT_TYPES = ["Box - Front", "Box - Front - Reconstructed", "Fanart - Box - Front", "Steam Poster"]
+BACK_TYPES = ["Box - Back", "Box - Back - Reconstructed"]
+# covers.js: North American backs print English/French/Spanish side by side, so English-only regions come first
+BACK_REGION_PREF = ["United Kingdom", "Australia", "Europe", "World", "North America", "United States", "Canada", "", None]
 REGION_PREF = ["North America", "United States", "World", "", "Canada", "Europe", "United Kingdom", "Japan"]
 TDB_SYS = {"gc": "wii", "wii": "wii", "wiiu": "wiiu"}
 TDB_REGIONS = {"E": ["US"], "N": ["US"], "J": ["JA"], "K": ["KO"], "P": ["EN", "FR", "DE", "ES", "IT", "NL"],
@@ -285,7 +288,7 @@ def launchbox_index(cache, platforms):
     return idx
 
 
-def launchbox_front(idx, game):
+def launchbox_front(idx, game, types=None, regions=None):
     plat = LAUNCHBOX.get(game["system"])
     entries = idx["games"].get(plat) if plat else None
     if not entries:
@@ -299,9 +302,10 @@ def launchbox_front(idx, game):
     if not g:
         return None
     imgs = idx["images"].get(g["id"], [])
-    for t in FRONT_TYPES:
+    pref = regions or REGION_PREF
+    for t in types or FRONT_TYPES:
         c = [i for i in imgs if i["type"] == t and i["file"]]
-        c.sort(key=lambda i: REGION_PREF.index(i["region"]) if i["region"] in REGION_PREF else 99)
+        c.sort(key=lambda i: pref.index(i["region"]) if i["region"] in pref else 99)
         if c:
             return LB_IMG + urllib.parse.quote(c[0]["file"]), g["name"]
     return None
@@ -376,6 +380,16 @@ def main():
     report = []
     for g in games:
         key = g["id"].replace(":", "_")
+        # the back (LaunchBox "Box - Back"): the app shows it when the case is flipped
+        if lb and not (out / f"{key}-back.jpg").exists():
+            r = launchbox_front(lb, g, BACK_TYPES, BACK_REGION_PREF)
+            if r:
+                try:
+                    (out / f"{key}-back.jpg").write_bytes(shrink(get(r[0])))
+                    report.append((g, "back", f"launchbox: {r[1]}"))
+                except Exception as e:
+                    report.append((g, "fail", f"back ({e})"))
+                time.sleep(0.15)
         if any((out / f"{key}{e}").exists() for e in (".png", ".jpg")):
             report.append((g, "kept", ""))
             continue
@@ -410,7 +424,7 @@ def main():
         time.sleep(0.15)  # be gentle with the free services
     for g, state, how in report:
         print(f"[{state:4}] {g['system']:5} {g['title'][:50]:50} {how}")
-    counts = {s: sum(1 for r in report if r[1] == s) for s in ("ok", "kept", "none", "fail")}
+    counts = {s: sum(1 for r in report if r[1] == s) for s in ("ok", "back", "kept", "none", "fail")}
     print(f"\ncovers: {counts}")
     return 0
 

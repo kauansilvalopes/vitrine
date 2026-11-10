@@ -226,6 +226,18 @@ bool ShelfModel::move_item(const std::string &game_id, data::System to)
     return true;
 }
 
+bool ShelfModel::set_back(const std::string &game_id, const std::string &path)
+{
+    for (auto &s : shelves_)
+        for (auto &it : s.items)
+            if (it.kind == ItemKind::game && it.game.id == game_id)
+            {
+                it.game.cover_back = path;
+                return true;
+            }
+    return false;
+}
+
 const Item *ShelfModel::find(const std::string &game_id) const
 {
     for (const auto &s : shelves_)

@@ -166,6 +166,9 @@ std::string cover_key(const std::string &game_id)
 bool CoverIndex::resolve(Game &g) const
 {
     const bool found = resolve_emulator(g);
+    // Boxshelf's own back (<key>-back.jpg) wins over an emulator's
+    if (const auto back = own_.find(cover_key(g.id) + "-back"); back != own_.end())
+        g.cover_back = "/data/boxshelf/covers/" + back->second;
     const auto own = own_.find(cover_key(g.id));
     if (own == own_.end())
         return found;

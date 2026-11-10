@@ -51,4 +51,7 @@ std::string_view gametdb_art(std::string_view system_key);
 // Front cover URLs for a game, best first: exact title matches only (gametdb.js fullCovers), HD then normal.
 std::vector<std::string> gametdb_front_urls(const std::vector<TdbGame> &db, std::string_view system_key,
                                             std::string_view title);
+// gametdb.js fullCoverUrls(): the full cover scans (back | spine | front) of the same matches, best first.
+std::vector<std::string> gametdb_full_urls(const std::vector<TdbGame> &db, std::string_view system_key,
+                                           std::string_view title);
 } // namespace boxshelf::data
