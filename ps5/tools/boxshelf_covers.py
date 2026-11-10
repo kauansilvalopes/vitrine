@@ -23,7 +23,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-UA = "Boxshelf-PS5/0.1"
+UA = "Vitrine-PS5/0.2"
 LIBRETRO = {"gc": "Nintendo - GameCube", "wii": "Nintendo - Wii", "psp": "Sony - PlayStation Portable",
             "wiiu": "Nintendo - Wii U", "sw": "Nintendo - Switch", "ps3": "Sony - PlayStation 3",
             "ps4": "Sony - PlayStation 4", "ps2": "Sony - PlayStation 2", "x360": "Microsoft - Xbox 360",
