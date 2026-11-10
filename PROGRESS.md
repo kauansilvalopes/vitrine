@@ -285,3 +285,11 @@ converted from JPEG XR into `ps5/.local/ps5-shots/`):** the redeployed build sho
 PS2 (Ben 10: Ultimate Alien, title from the serial database), 3DS boxes (Kirby, Luigi's Mansion, Dragon Ball
 Fusions) in the landscape case. Clock 14:12 matches the capture time, so the time-zone parameters (4/5) are right.
 PS2 games without art on the console keep the placeholder (expected). Verified **on the console**.
+
+**Owner feedback on those screenshots → fixed (PC preview, not yet redeployed):**
+- "A light around the cover looks odd": the selected case's inner glow was drawn as flat 2D strips over a face in
+  perspective. Removed (Deviation: Boxshelf's subtle `inset` glow returns when it can be drawn in the 3D pass).
+- "Some covers don't fill the case (PS5, Switch)": every cover now sits in the case's plastic frame (`edge`, case
+  colour; style.css `.f-front` padding) with the clear plastic's rim light and edge darkening baked in; square art
+  (Switch icons, PS5/PS4 `icon0`, 3DS icon fallback) is cropped to fill the face. Tried the 3840x2160 `pic0.png`
+  key art for PS5: cropped to a case it was often a meaningless close-up, so `icon0` (it carries the logo) is used.
