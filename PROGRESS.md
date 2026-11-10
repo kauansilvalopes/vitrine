@@ -451,3 +451,18 @@ setting, main); their title list moved to `ps5/tools/demo_library.*`, used only 
 app`. Pushed `ps5-port` (cb43b82), tag `ps5-v0.2.0`, GitHub release "Boxshelf PS5 0.2.0" (full release, marked latest)
 with `PPSA99850.zip` (SHA-256 755525b11f34b31e14fe8904a0779bfddb9b95f2ce4179bdc508bacd9985f252). The notes say Flip,
 Play, the menu and the backs were tested on the PC preview; the console check of this build is still to come.
+
+## 2026-11-10 — renamed to Vitrine; release ps5-v0.2.1
+
+Boxshelf's author asks forks for their own name and logo (PS5-PORT.md rule 8). The rename itself (titleName
+"Vitrine", new icon, i18n / scene text, User-Agent, README, notices, tests; contentVersion 01.002.001) was committed
+by the owner's other assistant (12c417f, c3acc3a), which could not build. Here:
+- Pulled ps5-port; `make test` (data 228/0, shelf 64/0, list-library, preview smoke) and `make app` pass.
+  `dist/PPSA99850/sce_sys/param.json` says titleName "Vitrine" / 01.002.001, and the package's icon0.png is the new
+  one (byte-identical to sce_sys/icon0.png, different from 0.2.0's) — checked on the PC build output.
+- Searched for "Boxshelf" the user can see: none left in the app's strings or assets. The PC cover tool's
+  User-Agent now says Vitrine (e3b7e47). Kept on purpose: the internal identifiers (namespace boxshelf,
+  /download0/boxshelf, /data/boxshelf/covers) and the package contentId (UP9000-PPSA99850_00-BOXSHELFPS5APP01, not
+  shown to users; changing it could make the console treat the update as another title).
+- Release: tag ps5-v0.2.1, pre-release "Vitrine 0.2.1", `PPSA99850.zip` (folder PPSA99850/ at its root), SHA-256
+  79a906e0caf8ad40658cb91e39d1095941320716294df4fad605a28a6fc44566. Not run on the console yet.
