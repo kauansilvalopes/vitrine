@@ -168,6 +168,64 @@ bool ShelfModel::set_cover(const std::string &game_id, const std::string &path)
     return false;
 }
 
+bool ShelfModel::move_item(const std::string &game_id, data::System to)
+{
+    const data::System viewed = shelves_.empty() ? data::System::count : cur().system;
+    Item moved;
+    bool found = false;
+    for (std::size_t si = 0; si < shelves_.size() && !found; ++si)
+    {
+        auto &items = shelves_[si].items;
+        for (std::size_t i = 0; i < items.size(); ++i)
+            if (items[i].kind == ItemKind::game && items[i].game.id == game_id)
+            {
+                if (shelves_[si].system == to)
+                    return false;
+                moved = std::move(items[i]);
+                items.erase(items.begin() + static_cast<std::ptrdiff_t>(i));
+                auto &s = shelves_[si];
+                --s.game_count;
+                s.selected = std::max(0, std::min(s.selected, static_cast<int>(s.items.size()) - 1));
+                if (s.items.empty())
+                    shelves_.erase(shelves_.begin() + static_cast<std::ptrdiff_t>(si));
+                found = true;
+                break;
+            }
+    }
+    if (!found)
+        return false;
+    moved.system = to;
+    moved.game.system = to;
+    auto target = std::find_if(shelves_.begin(), shelves_.end(), [&](const Shelf &s) { return s.system == to; });
+    if (target == shelves_.end())
+    {
+        Shelf s;
+        s.system = to;
+        target = std::find_if(shelves_.begin(), shelves_.end(),
+                              [&](const Shelf &x) { return static_cast<int>(x.system) > static_cast<int>(to); });
+        target = shelves_.insert(target, std::move(s));
+    }
+    auto &items = target->items;
+    auto at = std::find_if(items.begin(), items.end(), [&](const Item &x)
+                           { return x.kind == ItemKind::game && data::title_less(moved.title, x.title); });
+    items.insert(at, std::move(moved));
+    ++target->game_count;
+    // an "Add games" tile goes once the shelf has a game
+    items.erase(std::remove_if(items.begin(), items.end(), [](const Item &x) { return x.kind == ItemKind::setup; }),
+                items.end());
+    // keep looking at the shelf we were on; when the move emptied it, follow the game
+    current_ = -1;
+    for (int i = 0; i < shelf_count(); ++i)
+        if (shelves_[static_cast<std::size_t>(i)].system == viewed)
+            current_ = i;
+    if (current_ < 0)
+        for (int i = 0; i < shelf_count(); ++i)
+            if (shelves_[static_cast<std::size_t>(i)].system == to)
+                current_ = i;
+    current_ = std::max(0, current_);
+    return true;
+}
+
 const Item *ShelfModel::find(const std::string &game_id) const
 {
     for (const auto &s : shelves_)

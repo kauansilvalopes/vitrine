@@ -2,6 +2,7 @@
 #include "app/launcher.hpp"
 
 #include "app/elf_client.hpp"
+#include "app/i18n.hpp"
 #include "cJSON.h"
 
 #include <strings.h>
@@ -269,10 +270,10 @@ bool Launcher::start(LaunchRequest request)
     if (joinable_)
         pthread_join(thread_, nullptr), joinable_ = false;
     request_ = std::move(request);
-    say("Checking the console", true);
+    say(tr("Checking the console"), true);
     if (pthread_create(&thread_, nullptr, &Launcher::thread_main, this) != 0)
     {
-        say("Could not start " + request_.title, false);
+        say(trf("Could not start %s", request_.title), false);
         pthread_mutex_lock(&lock_);
         busy_ = false;
         pthread_mutex_unlock(&lock_);
@@ -325,20 +326,21 @@ void Launcher::run()
         pthread_mutex_unlock(&lock_);
     };
 #ifdef BOXSHELF_HOST_PREVIEW
-    finish("Starting games needs the console", false);
+    finish(tr("Starting games needs the console"), false);
     return;
 #endif
     std::string active;
     bool running = false;
     if (!running_title(active, running))
-        return finish("Could not reach the console. Try again.", false);
+        return finish(tr("Could not reach the console. Try again."), false);
     if (running && active == r.app)
-        return finish(r.title + " is already open", true);
+        return finish(trf("%s is already open", r.title), true);
     if (running && active != "PPSA99850")
-        return finish("Another game is open. Close it from the PS5 menu.", false);
+        return finish(tr("Another game is open. Close it from the PS5 menu."), false);
 
     bool direct = false;
-    std::string opened = "Opening " + r.title;
+    std::string opened = trf("Opening %s", r.title);
+    bool sx2 = false;
     if (!r.target.empty())
     {
         std::string target = r.target;
@@ -347,32 +349,32 @@ void Launcher::run()
         {
 #ifndef BOXSHELF_HOST_PREVIEW
             if (resolved && ftp_store_text("/data/PCSX2/logs/disc-launch.txt", target))
-                opened = "Opening PS5SX2 with " + r.title;
+                opened = trf("Opening PS5SX2 with %s", r.title), sx2 = true;
 #endif
         }
         else if (resolved)
         {
-            say("Starting " + r.title, true);
+            say(trf("Starting %s", r.title), true);
             direct = send_direct_launcher(r.app, target);
         }
-        if (!direct && opened.rfind("Opening PS5SX2", 0) != 0)
-            opened = "Direct start unavailable. Opening the emulator.";
+        if (!direct && !sx2)
+            opened = tr("Direct start unavailable. Opening the emulator.");
     }
     if (!direct)
     {
         std::string body;
         say(opened, true);
         if (!elf_get("/launch?titleId=" + r.app, body))
-            return finish("The request failed. Your library is untouched.", false);
+            return finish(tr("The request failed. Your library is untouched."), false);
     }
     // the console confirms: the title is up within a few seconds
-    say(direct ? "Request sent. Waiting for the game" : "Waiting for the PS5", true);
+    say(direct ? tr("Request sent. Waiting for the game") : tr("Waiting for the PS5"), true);
     for (int attempt = 0; attempt < 4; ++attempt)
     {
         usleep(attempt ? 1500000 : (direct ? 1500000 : 1000000));
         if (running_title(active, running) && running && active == r.app)
-            return finish(r.title + " is starting", true);
+            return finish(trf("%s is starting", r.title), true);
     }
-    finish("Not confirmed. Check the game in the PS5 menu.", false);
+    finish(tr("Not confirmed. Check the game in the PS5 menu."), false);
 }
 } // namespace boxshelf::app

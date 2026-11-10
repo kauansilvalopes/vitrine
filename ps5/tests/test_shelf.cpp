@@ -1,6 +1,7 @@
 // Boxshelf PS5 - host unit tests for the shelf model (src/app/shelf, src/app/css). SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/clock.hpp"
 #include "app/css.hpp"
+#include "app/i18n.hpp"
 #include "app/shelf.hpp"
 
 #include <cmath>
@@ -147,6 +148,11 @@ static void test_css()
 static void test_clock()
 {
     // 2026-11-10 13:15 (a Tuesday) = 1794316500 s; 1970-01-01 00:00 was a Thursday; 2024-02-29 a leap Thursday
+    set_language(Lang::en);
+    CHECK(format_clock(1794316500LL).date == "Tue, Nov 10");
+    set_language(Lang::es);
+    CHECK(format_clock(1794316500LL).date == "mar, 10 nov");
+    set_language(Lang::pt);
     const Clock a = format_clock(1794316500LL);
     CHECK(a.date == "ter., 10 de nov." && a.time == "13:15");
     const Clock b = format_clock(0);
@@ -155,10 +161,37 @@ static void test_clock()
     CHECK(c.date == "qui., 29 de fev." && c.time == "12:00");
     const Clock d = format_clock(-60); // 1969-12-31 23:59, a Wednesday
     CHECK(d.date == "qua., 31 de dez." && d.time == "23:59");
+    set_language(Lang::en);
+}
+
+static void test_move()
+{
+    // the owner's "Move to shelf": a recomp from Others to a new N64 shelf, then to Switch
+    auto with_ids = [](data::Shelf s)
+    {
+        for (auto &g : s.games)
+            g.id = std::string(data::style(s.system).key) + ":" + g.title;
+        return s;
+    };
+    std::vector<Shelf> shelves;
+    shelves.push_back(prepare_shelf(with_ids(shelf_of(System::sw, {"Mario", "Zelda TotK"})), true));
+    shelves.push_back(prepare_shelf(with_ids(shelf_of(System::custom, {"Breath of the Wild", "Ocarina 4k"})), false));
+    ShelfModel m;
+    m.set(shelves, 1);
+    CHECK(m.move_item("custom:Ocarina 4k", System::n64));
+    CHECK(m.shelf_count() == 3 && m.shelf(1).system == System::n64 && m.shelf(2).system == System::custom); // N64 before Others
+    CHECK(m.cur().system == System::custom && m.cur().game_count == 1);
+    CHECK(m.shelf(1).items.size() == 1 && m.shelf(1).items[0].system == System::n64);
+    CHECK(!m.move_item("custom:Ocarina 4k", System::n64)); // already there
+    CHECK(m.move_item("custom:Breath of the Wild", System::sw));
+    // Others emptied and went; the view follows the game
+    CHECK(m.shelf_count() == 2 && m.cur().system == System::sw);
+    CHECK(m.shelf(0).items.size() == 3 && m.shelf(0).items[0].title == "Breath of the Wild" && m.shelf(0).game_count == 3);
 }
 
 int main()
 {
+    test_move();
     test_clock();
     test_place();
     test_prepare();

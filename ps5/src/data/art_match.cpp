@@ -456,7 +456,7 @@ std::string_view libretro_system(std::string_view key)
         {"sw", "Nintendo - Switch"},            {"ps3", "Sony - PlayStation 3"},
         {"ps4", "Sony - PlayStation 4"},        {"ps2", "Sony - PlayStation 2"},
         {"x360", "Microsoft - Xbox 360"},       {"n3ds", "Nintendo - Nintendo 3DS"},
-        {"psx", "Sony - PlayStation"},          {"nds", "Nintendo - Nintendo DS"},
+        {"psx", "Sony - PlayStation"},          {"nds", "Nintendo - Nintendo DS"}, {"n64", "Nintendo - Nintendo 64"},
     };
     for (const auto &[k, v] : map)
         if (key == k)

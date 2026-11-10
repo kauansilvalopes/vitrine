@@ -370,3 +370,29 @@ rename Custom to Others and put the apps there."**
 
 **Next:** owner tests on the console; then □ Details, Menu / sort panel, settings, LaunchBox on the console for PS5
 boxes, hold-△ favourites, recently played, pt-BR / es.
+
+## 2026-11-10 (night) — names, Spectrum layer, languages, quick menu, N64 shelf
+
+**Owner: "are my game names right? is the background modern like Boxshelf? add the languages; there must always be
+a menu — I have two Zelda recomps, how would I put them on the right shelf?"**
+- Names: checked the real library (219 games, list-library). Clean except PS1 folders without apostrophes
+  ("Tony Hawks Pro Skater", "Disneys Tarzan"...). The loader now takes the proper name from the libretro index the
+  art fetcher keeps (`/download0/boxshelf/libretro-<sys>.txt`) **only when it differs by apostrophes alone**
+  (libretro's file names also turn ':' into ' - ' and '&' into '_': those are not taken). 13 PS1 titles fixed
+  (host check against the PC copy of the index). On the console it applies from the second start (the index is
+  downloaded on the first).
+- Background: Boxshelf's Spectrum theme has a moving layer (themefx.js `spectrum()`): three slow ribbons of light
+  (a wide 9 % band, a 1.2 % band and a hairline per ribbon) and 80 rising, twinkling dust motes in the shelf's hue,
+  over the wash and under the vignette. Ported (canvas 'lighter' blending approximated by normal blending).
+- Languages: `src/app/i18n.*` — English (Boxshelf's words), Português, Español; every interface string, the clock
+  date, the launch messages, the made-up back. Default = the console's language (system param 1; pt-BR/pt-PT ->
+  pt, es/es-LA -> es, else en); the menu changes it.
+- Quick menu (☰ / Options; app.js "The quick menu", quickshelf.css): glass panel from the right, the shelf steps
+  aside (translate only — the .92 scale is not done: Deviation), game header (cover, shelf, title, meta), rows
+  with the white pill, chips. Rows now: **Move to shelf** (any shelf, N64 included; the original shelf undoes it) and
+  **Language**. Saved in `/download0/boxshelf/settings.json` (`src/app/settings.*`), applied at load after the
+  art lookup; moved installed titles still open by their own title id. Owner's request: not in Boxshelf (Deviation).
+- New **N64** shelf with Boxshelf's systems-extra.js style (card box 1.38, "NINTENDO 64" band, .wm-n64); it only
+  shows when a game is moved there (no N64 emulator on the PS5).
+- **Verified on:** unit tests (data 228/0, shelf 64/0 incl. move_item and the clock in 3 languages), PC preview
+  (`real-custom-0-menu` in pt, Spectrum layer on `real-sw-4`), `make app` builds. **Not on the console yet.**

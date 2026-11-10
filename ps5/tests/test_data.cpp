@@ -33,7 +33,7 @@ static void test_styles()
         const auto s = static_cast<System>(i);
         CHECK_EQ(style(s).id, s);
         CHECK_EQ(system_from_key(style(s).key), s);
-        CHECK(style(s).ratio > 0.5f && style(s).ratio < 1.2f);
+        CHECK(style(s).ratio > 0.5f && style(s).ratio < 1.4f); // N64 card boxes are landscape (1.38)
         CHECK(!style(s).spine_band.label.empty());
     }
     CHECK(std::fabs(style(System::n3ds).ratio - 1.127f) < 1e-6f); // the 3DS case is landscape

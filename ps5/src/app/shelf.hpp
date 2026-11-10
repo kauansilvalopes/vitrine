@@ -90,6 +90,9 @@ class ShelfModel
     bool set_cover(const std::string &game_id, const std::string &path);
     // The game item with this id on any shelf, or null.
     const Item *find(const std::string &game_id) const;
+    // Puts a game on another shelf (made when missing, in the shelves' order; a shelf left empty goes). The view
+    // stays on the shelf it was on. False when the game is not found or is already there.
+    bool move_item(const std::string &game_id, data::System to);
 
   private:
     std::vector<Shelf> shelves_;

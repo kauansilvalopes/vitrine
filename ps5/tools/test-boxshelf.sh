@@ -22,7 +22,7 @@ clang++-18 -std=c++20 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined 
   tests/test_data.cpp src/data/*.cpp build/tests/cjson.o -o build/tests/test_data
 build/tests/test_data
 clang++-18 -std=c++20 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -Isrc \
-  tests/test_shelf.cpp src/app/shelf.cpp src/data/*.cpp build/tests/cjson.o -o build/tests/test_shelf
+  tests/test_shelf.cpp src/app/shelf.cpp src/app/i18n.cpp src/data/*.cpp build/tests/cjson.o -o build/tests/test_shelf
 build/tests/test_shelf
 # The library tool over a made-up listings folder (same layout fetch-listings.py writes).
 make --no-print-directory -s library-tool

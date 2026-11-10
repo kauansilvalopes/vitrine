@@ -15,8 +15,9 @@
 
 namespace boxshelf::app
 {
-void LibraryLoader::start()
+void LibraryLoader::start(std::vector<std::pair<std::string, std::string>> moves)
 {
+    moves_ = std::move(moves);
     int expected = 0;
     if (!state_.compare_exchange_strong(expected, 1))
         return;
@@ -158,6 +159,11 @@ void LibraryLoader::work()
     for (auto &g : games)
     {
         covered += index.resolve(g);
+        // the owner's shelf for it (menu: Move to shelf), after its art was found where it came from
+        for (const auto &[id, key] : moves_)
+            if (id == g.id)
+                if (const System to = system_from_key(key); to != System::count && to != System::home)
+                    g.system = to;
         const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
         // box art the app downloaded earlier (art_fetcher), when the PC tool sent none
         struct stat st

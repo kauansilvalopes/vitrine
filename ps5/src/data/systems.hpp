@@ -29,6 +29,7 @@ enum class System : std::uint8_t
     n3ds,
     psx,
     nds,
+    n64,    // no emulator on the PS5: only titles the owner moves here (an N64 recomp)
     custom, // PC ports and recomps (Boxshelf's Custom shelf): homebrew ports installed on the PS5
     media,
     count

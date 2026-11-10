@@ -1,8 +1,10 @@
 // Boxshelf PS5 - console entry point. SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/art_fetcher.hpp"
 #include "app/clock.hpp"
+#include "app/i18n.hpp"
 #include "app/library_loader.hpp"
 #include "app/scene.hpp"
+#include "app/settings.hpp"
 #include "core/input.hpp"
 #include "gl_main.hpp"
 #include "platform/ps5/pad.hpp"
@@ -85,6 +87,15 @@ int main()
 {
     hui::sys::log("[BOXSHELF] boot PPSA99850");
     start_us = last_us = hui::sys::monotonic_us();
-    loader.start();
+    // the owner's choices: the interface language (the console's when none was picked) and games moved to a shelf
+    auto settings = boxshelf::app::load_settings();
+    int system_language = 1;
+    const int rl = sceSystemServiceParamGetInt(1, &system_language); // SCE_SYSTEM_SERVICE_PARAM_ID_LANG
+    const auto fallback = boxshelf::app::language_from_system(rl == 0 ? system_language : 1);
+    boxshelf::app::set_language(boxshelf::app::language_from_code(settings.language, fallback));
+    hui::sys::log("[BOXSHELF] language: system %d (ret %d), using %s; %zu games moved", system_language, rl,
+                  std::string(boxshelf::app::language_code(boxshelf::app::language())).c_str(), settings.moves.size());
+    loader.start(settings.moves);
+    screen.set_settings(std::move(settings));
     boxshelf::run_gl(draw);
 }

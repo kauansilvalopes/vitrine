@@ -3,6 +3,7 @@
 //
 // usage: preview-boxshelf-gl <out.ppm> <mode>
 // The library is made up (the same invented titles as Boxshelf's renderer/mock.js), so no real game is needed.
+#include "app/i18n.hpp"
 #include "app/scene.hpp"
 #include "app/ui_fonts.hpp"
 #include "core/save_file.hpp"
@@ -291,9 +292,18 @@ int main(int argc, char **argv)
     std::string mode = argv[2];
     // <mode>-flip: the selected case turned round (Triangle), <mode>-turn: caught mid-turn
     int flip = 0;
-    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}})
+    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}, {"-menu", 4}})
         if (mode.size() > std::strlen(suffix) && mode.compare(mode.size() - std::strlen(suffix), std::string::npos, suffix) == 0)
             flip = kind, mode.resize(mode.size() - std::strlen(suffix));
+    // BOXSHELF_LANG=pt|es: the interface language
+    if (const char *l = std::getenv("BOXSHELF_LANG"))
+        boxshelf::app::set_language(boxshelf::app::language_from_code(l, boxshelf::app::Lang::en));
+    auto press = [](boxshelf::app::ShelfScreen &screen, double now, hui::Action action)
+    {
+        hui::InputFrame f;
+        f.pressed = f.held = hui::action_bit(action);
+        screen.input(f, now, 0.016f);
+    };
     auto press_triangle = [](boxshelf::app::ShelfScreen &screen, double now)
     {
         hui::InputFrame down;
@@ -341,6 +351,14 @@ int main(int argc, char **argv)
             if (frame > 2 && screen.covers_pending() == 0)
                 break;
             usleep(16000);
+        }
+        if (flip == 4)
+        {
+            press(screen, now, hui::Action::menu);
+            press(screen, now + 0.1, hui::Action::confirm); // opens "Move to shelf"
+            host.render(screen, now + 0.2);
+            host.render(screen, now + 1.0);
+            return host.write_ppm(argv[1]) ? 0 : 3;
         }
         if (flip)
         {
@@ -394,6 +412,12 @@ int main(int argc, char **argv)
         in.nav = hui::Direction::right;
         screen.input(in, now, 0.016f);
         now += 0.06;
+    }
+    else if (flip == 4)
+    {
+        press(screen, now, hui::Action::menu);
+        press(screen, now + 0.1, hui::Action::confirm);
+        now += 1.0;
     }
     else if (flip == 3)
     {

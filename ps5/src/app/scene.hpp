@@ -6,6 +6,7 @@
 #include "app/cover_loader.hpp"
 #include "app/css.hpp"
 #include "app/launcher.hpp"
+#include "app/settings.hpp"
 #include "app/shelf.hpp"
 #include "core/held_step.hpp"
 #include "core/input.hpp"
@@ -83,8 +84,35 @@ class ShelfScreen
     void draw_made_up_back(hui::gfx::DrawList &list, const Item &item, const hui::gfx::Rect &r);
     void set_flipped(bool on, double now);
     void play(double now);
+
+  public:
+    // The owner's saved choices (language, games moved to another shelf); the quick menu changes and saves them.
+    void set_settings(Settings settings)
+    {
+        settings_ = std::move(settings);
+    }
+    bool menu_open() const
+    {
+        return qm_open_;
+    }
+    void open_menu(double now);
+
+  private:
     void toast(const std::string &message, bool working, bool done, double now);
     void draw_toast(hui::gfx::DrawList &list, double now);
+    // The quick menu (app.js "The quick menu", quickshelf.css): a glass panel from the right.
+    struct MenuRow
+    {
+        int kind;            // 0 Move to shelf, 1 Language
+        std::string label, value;
+        std::vector<std::string> chips;
+        int current;         // the chip in use
+    };
+    std::vector<MenuRow> menu_rows() const;
+    void menu_input(const hui::InputFrame &in, double now);
+    void menu_apply(const MenuRow &row, int chip, double now);
+    void draw_menu(GlCanvas &canvas, double now);
+    float aside(double now) const; // how far the shelf has stepped aside, 0..1
     void update_covers(GlCanvas &canvas);
 
     ShelfModel model_;
@@ -102,6 +130,11 @@ class ShelfScreen
     bool flipped_ = false;
     Glide flip_{0.0f, 0.0f, -1.0, .75f, Bezier{.3f, .95f, .25f, 1.0f}, true};
     double north_down_ = -1.0;
+    Settings settings_;
+    bool qm_open_ = false;
+    Glide qm_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};
+    Glide qm_hl_{0.0f, 0.0f, -1.0, .32f, Bezier{.3f, .9f, .25f, 1.0f}, false}; // the white pill's row
+    int qm_row_ = 0, qm_sub_ = -1, qm_chip_ = 0;
     // Cross: Play. The launch runs on its own thread; its messages show in .toast (style.css).
     Launcher launcher_;
     unsigned launch_serial_ = 0;
