@@ -1461,7 +1461,7 @@ void ShelfScreen::draw_empty(DrawList &list)
          W * .5f, cy - 28.0f, 34.0f, kInk, Align::center, 0.0f, 42.0f);
     text(list, Face::lexend500,
          loading ? tr("Installed games, then the folders your emulators use")
-                 : tr("Put your games in Emulation/roms/<system> on your drive and open Boxshelf again."),
+                 : tr("Put your games in Emulation/roms/<system> on your drive and open Vitrine again."),
          W * .5f, cy + 24.0f, 16.0f, kInkDim, Align::center, 0.0f, 22.0f);
 }
 

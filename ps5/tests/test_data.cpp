@@ -175,7 +175,7 @@ static void test_appdb_and_shelves()
 {
     const auto apps = games_from_appdb(
         R"({"titles":[{"titleId":"PPSA01234","titleName":"Big Game"},{"titleId":"CUSA05678","titleName":"Old Game"},)"
-        R"({"titleId":"PPSA99841","titleName":"Estante"},{"titleId":"PPSA99850","titleName":"Boxshelf"},)"
+        R"({"titleId":"PPSA99841","titleName":"Estante"},{"titleId":"PPSA99850","titleName":"Vitrine"},)"
         R"({"titleId":"PPSA01234","titleName":"dup"},{"titleId":"NPXS12345"},{"titleId":"PPSA02222"}]})");
     CHECK_EQ(apps.size(), 4u);
     CHECK(apps.size() == 4 && apps[0].system == System::ps5 && apps[0].title == "Big Game");

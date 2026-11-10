@@ -11,7 +11,7 @@ taken = {"PPSA99841", "PPSA99842", "PPSA99203", "PPSA98510", "PPSA99764", "PPSA9
 assert re.fullmatch(r"PPSA\d{5}", title), title
 assert title not in taken, f"{title} belongs to another app"
 assert title in param["contentId"] and param["conceptId"] == title[4:]
-assert param["localizedParameters"]["en-US"]["titleName"] == "Boxshelf"
+assert param["localizedParameters"]["en-US"]["titleName"] == "Vitrine"
 print(f"param.json ok: {title}")
 PY
 bash tools/validate-assets.sh

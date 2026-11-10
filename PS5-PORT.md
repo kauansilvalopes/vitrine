@@ -41,7 +41,8 @@ write the decision in `PROGRESS.md` under "Deviations".
    unless the owner says "sobe"/"push"/"release".** Never rewrite published history.
 7. **Report faithfully.** Say what was verified where: unit test, PC preview render, or the real console. Never
    claim something works on the console if you only saw it in the PC preview.
-8. Answer the owner in pt-BR, short and direct. Code, comments and docs in English.
+8. **Name and logo.** Boxshelf's author asks that forks use their own name and logo (the GPL covers the code, not the name or the logo; saying "based on Boxshelf" is welcome). This app is called **Vitrine** and has its own icon. Never ship the name "Boxshelf" or Boxshelf's logo as the app's own: user-visible text, `titleName`, icon, release titles and store entries say Vitrine. Internal identifiers (`namespace boxshelf`, `/download0/boxshelf`, `/data/boxshelf/covers`) stay so saved settings and caches keep working.
+9. Answer the owner in pt-BR, short and direct. Code, comments and docs in English.
 
 ## 3. Read this first: what Boxshelf is, and where its UX lives
 

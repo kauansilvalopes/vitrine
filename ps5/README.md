@@ -1,6 +1,6 @@
-# Boxshelf for PS5 (native)
+# Vitrine (native PS5 port of Boxshelf)
 
-Native C++/OpenGL port of Boxshelf's UX for a jailbroken PS5. Title id **PPSA99850**. See `../PS5-PORT.md` (the
+Vitrine is a native C++/OpenGL port of Boxshelf's UX for a jailbroken PS5, based on [Boxshelf](https://github.com/sassiestrhihno/boxshelf-source) by sassiestrhihno (GPL-3.0). It is not the official Boxshelf and has its own name and icon, as Boxshelf's author asks of forks. Title id **PPSA99850**. See `../PS5-PORT.md` (the
 brief) and `../PROGRESS.md` (the log). Boxshelf's own sources stay untouched in the repository root as the reference.
 
 The engine (build system, GL renderer, 3D case pass, preview harness) comes from the owner's Estante
@@ -23,7 +23,7 @@ ps5-homebrew-ui and ps5-opengl (GPL-3.0). The UI in `src/app/` is a port of Boxs
 
 Needs a jailbroken PS5 with Elf Arsenal (HTTP API on port 6969, FTP on 2121) and ShadowMountPlus; developed on
 firmware 11.60. Unzip `PPSA99850.zip` from the release into `/data/homebrew/` on the console (the folder must be
-`/data/homebrew/PPSA99850`), let ShadowMountPlus register it, then open **Boxshelf** from the home screen. Open each
+`/data/homebrew/PPSA99850`), let ShadowMountPlus register it, then open **Vitrine** from the home screen. Open each
 emulator at least once so its settings exist. The app writes only to its own folder (`/download0/boxshelf`).
 
 ## Layout
@@ -34,7 +34,7 @@ emulator at least once so its settings exist. The app writes only to its own fol
 | `src/main.cpp` | Console entry point |
 | `src/gfx`, `src/core`, `src/platform`, `src/runtime`, `src/gl_*`, `src/gl3d.*` | Engine from Estante |
 | `tools/preview-boxshelf*.{cpp,sh}` | PC preview: renders the real scene code with Mesa EGL to `.local/gl-<mode>.png` |
-| `sce_sys/` | `param.json` and the launcher icon (Boxshelf's own icon) |
+| `sce_sys/` | `param.json` and the launcher icon (Vitrine's own icon, drawn for this project) |
 
 ## Commands (WSL Ubuntu: clang-18, make, ninja, unzip, Mesa EGL)
 

@@ -68,7 +68,7 @@ bool https_get(const std::string &url, std::string &body, std::size_t max_bytes,
     curl_easy_setopt(easy, CURLOPT_REDIR_PROTOCOLS_STR, "https");
     curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(easy, CURLOPT_MAXREDIRS, 4L);
-    curl_easy_setopt(easy, CURLOPT_USERAGENT, "Boxshelf-PS5/0.1");
+    curl_easy_setopt(easy, CURLOPT_USERAGENT, "Vitrine-PS5/0.2");
     curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, ""); // gzip / zstd when the server offers them
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, 8000L); // covers the name lookup too
     curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, timeout_ms);

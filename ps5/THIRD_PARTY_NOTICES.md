@@ -135,9 +135,9 @@ variable font from https://github.com/google/fonts/tree/main/ofl/inter, cut with
 Regenerate with `bash tools/bake-fonts.sh` and `python3 tools/build-font-atlas.py` (Pillow 12.1.1).
 The committed atlases let the normal native build run without Pillow.
 
-## Boxshelf PS5: libraries shipped inside the app
+## Vitrine (the Boxshelf PS5 port): libraries shipped inside the app
 
-The Boxshelf PS5 title downloads box art itself (src/app/art_fetcher.cpp), so its eboot statically links PacBrew
+The Vitrine title downloads box art itself (src/app/art_fetcher.cpp), so its eboot statically links PacBrew
 v0.40.2's libcurl 8.18.0, OpenSSL 3.5.2, zlib 1.3.2, zstd 1.5.6 and libpsl 0.21.5 (licences in the table above),
 run through `src/net/console_curl.c` (from Estante's update-check example, see above; four libc stand-ins it
 defined are left to `src/runtime/runtime_shims.c`). It also builds in miniz 3.0.2 (MIT, `src/third_party/miniz_all.c`,
