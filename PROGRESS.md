@@ -279,3 +279,9 @@ cover tool (GameTDB / PS2 covers) — waiting for the Estante handoff (`emulator
 that the spines need too); PS5/PS4 use the square `icon0` until the store portrait art tool is ported.
 
 **Next step:** owner redeploys to see real covers; then spines (band + title), glare, sheen, floor strips, backs.
+
+**Console check (owner's screenshots, 2026-11-10 14:12–14:13, read from `/user/av_contents/photo` read-only and
+converted from JPEG XR into `ps5/.local/ps5-shots/`):** the redeployed build shows the real covers on the console:
+PS2 (Ben 10: Ultimate Alien, title from the serial database), 3DS boxes (Kirby, Luigi's Mansion, Dragon Ball
+Fusions) in the landscape case. Clock 14:12 matches the capture time, so the time-zone parameters (4/5) are right.
+PS2 games without art on the console keep the placeholder (expected). Verified **on the console**.
