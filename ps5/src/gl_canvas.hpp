@@ -47,6 +47,11 @@ class GlCanvas final
         return spine_target_.texture();
     }
     static constexpr int spine_width = 960, spine_height = 128;
+    // CSS perspective for the 3D items of this frame (see Gl3D::set_camera).
+    void set_camera(float distance, float origin_x, float origin_y) noexcept
+    {
+        gl3d_.set_camera(distance, origin_x, origin_y);
+    }
     bool has_3d() const noexcept
     {
         return gl3d_.ready();
@@ -104,7 +109,8 @@ class GlCanvas final
     void render_spine(int width, int height) noexcept;
     void render_to(hui::gfx::Canvas &target, hui::gfx::DrawList &list, int w, int h, int width, int height) noexcept;
 
-    static constexpr std::size_t max_items = 30;
+    // The shelf draws up to ~17 cases, each with its floor reflection, plus the selected one's parts.
+    static constexpr std::size_t max_items = 72;
     hui::gfx::DrawList lists_[max_items + 1];
     std::vector<Item> items_;
     std::size_t segment_ = 0;

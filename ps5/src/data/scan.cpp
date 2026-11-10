@@ -442,6 +442,42 @@ std::vector<Game> games_from_appdb(std::string_view json)
 
 // ---------------------------------------------------------------- library
 
+bool title_less(std::string_view a, std::string_view b)
+{
+    // main/scanner.js: Intl.Collator(undefined, {sensitivity: 'base', numeric: true}) -> case-insensitive, runs of
+    // digits compared as numbers ("Game 2" < "Game 10").
+    std::size_t i = 0, j = 0;
+    while (i < a.size() && j < b.size())
+    {
+        const auto ca = static_cast<unsigned char>(a[i]), cb = static_cast<unsigned char>(b[j]);
+        if (std::isdigit(ca) && std::isdigit(cb))
+        {
+            std::size_t ei = i, ej = j;
+            while (ei < a.size() && a[ei] == '0')
+                ++ei;
+            while (ej < b.size() && b[ej] == '0')
+                ++ej;
+            std::size_t ni = ei, nj = ej;
+            while (ni < a.size() && std::isdigit(static_cast<unsigned char>(a[ni])))
+                ++ni;
+            while (nj < b.size() && std::isdigit(static_cast<unsigned char>(b[nj])))
+                ++nj;
+            if (ni - ei != nj - ej)
+                return ni - ei < nj - ej;
+            const int c = a.substr(ei, ni - ei).compare(b.substr(ej, nj - ej));
+            if (c != 0)
+                return c < 0;
+            i = ni, j = nj;
+            continue;
+        }
+        const char la = lower(static_cast<char>(ca)), lb = lower(static_cast<char>(cb));
+        if (la != lb)
+            return static_cast<unsigned char>(la) < static_cast<unsigned char>(lb);
+        ++i, ++j;
+    }
+    return a.size() - i < b.size() - j;
+}
+
 std::vector<Shelf> build_shelves(const std::vector<Game> &games)
 {
     std::vector<Shelf> shelves;
@@ -456,16 +492,9 @@ std::vector<Shelf> build_shelves(const std::vector<Game> &games)
         if (std::none_of(list.begin(), list.end(), [&](const Game &x) { return x.path == g.path; }))
             list.push_back(g);
     }
-    auto key = [](const std::string &s)
-    {
-        std::string k;
-        for (char c : s)
-            k += lower(c);
-        return k;
-    };
     for (auto &s : shelves)
         std::stable_sort(s.games.begin(), s.games.end(),
-                         [&](const Game &a, const Game &b) { return key(a.title) < key(b.title); });
+                         [&](const Game &a, const Game &b) { return title_less(a.title, b.title); });
     std::vector<Shelf> kept;
     for (auto &s : shelves)
     {

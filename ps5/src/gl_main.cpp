@@ -1,6 +1,7 @@
 // Boxshelf PS5 (engine from Estante) - GPU frame loop. SPDX-License-Identifier: GPL-3.0-or-later
 #include "gl_main.hpp"
 
+#include "app/ui_fonts.hpp"
 #include "core/save_file.hpp"
 #include "gfx/renderer.hpp"
 #include "platform/ps5/display_egl.hpp"
@@ -61,6 +62,8 @@ void run_gl(GlDrawScene draw) noexcept
         fail("FONT LOAD FAILED");
     }
     const std::uint32_t font_texture = renderer.batch().create_font_texture(font);
+    // Boxshelf's own faces (Lexend + the per-shelf wordmark faces); Inter is their fallback for other scripts.
+    app::load_ui_fonts(renderer.batch(), "/app0/assets/fonts", &font, font_texture);
     hui::sys::log("[BOXSHELF] gl: ready %dx%d", display.width(), display.height());
 
     bool splash_hidden = false;

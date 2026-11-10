@@ -88,6 +88,7 @@ enum class Shape : std::uint8_t
     star = 6,         // five-pointed star inscribed in the rect
     arc = 7,          // ring sector: gauges, spinners, radial menus
     chamfer = 8,      // rectangle with cut (45 degree) corners, optional border
+    radial = 9,       // elliptical radial gradient over the rect (CSS radial-gradient), centre/radii in extra
 };
 
 // One instanced quad; field order matches the vertex attributes.
@@ -136,6 +137,13 @@ class DrawList
     void gradient_rect(const Rect &r, float radius, Color top, Color bottom);
     // Horizontal gradient (left to right).
     void gradient_rect_h(const Rect &r, float radius, Color left, Color right);
+    // CSS `radial-gradient(ellipse rx ry at cx cy, inner stop0, outer stop1)` painted over area r: the colour is
+    // inner up to stop0 (a fraction of the radii), blends to outer at stop1, and stays outer beyond. Centre and
+    // radii are in virtual pixels. For "transparent" pass inner.with_alpha(0) (CSS blends premultiplied).
+    void radial_gradient(const Rect &r, float cx, float cy, float rx, float ry, Color inner, Color outer,
+                         float stop0 = 0.0f, float stop1 = 1.0f);
+    // Any CSS gradient angle (degrees, 0 = to top, 90 = to right, 180 = to bottom), over r, two stops.
+    void linear_gradient(const Rect &r, float degrees, Color from, Color to, float stop0 = 0.0f, float stop1 = 1.0f);
     void bordered_rect(const Rect &r, float radius, Color fill, float border, Color border_color);
     // Rectangle whose corners are cut at 45 degrees by `cut` pixels (sci-fi
     // panels, tags). border > 0 adds an inner border like bordered_rect.
@@ -178,6 +186,14 @@ class DrawList
     float text(const Font &font, std::uint32_t font_texture, std::string_view text, float x,
                float baseline, float size, Color color, Align align = Align::left,
                float tracking = 0.0f);
+
+    // Instances recorded so far; with recolor() a run of glyphs gets a gradient fill (CSS background-clip: text).
+    std::size_t mark() const
+    {
+        return instances_.size();
+    }
+    // Vertical gradient from top to bottom over the band [y0, y1] (virtual pixels) for instances [first, now).
+    void recolor(std::size_t first, float y0, float y1, Color top, Color bottom);
 
     // ---- state ----
     void push_clip(const Rect &r); // intersected with the current clip

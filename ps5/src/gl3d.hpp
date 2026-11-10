@@ -63,6 +63,14 @@ class Gl3D
   public:
     bool init() noexcept;
     void release() noexcept;
+    // CSS perspective: distance and origin in virtual pixels. The default (2015.3 at the centre) is the 30 degree
+    // field of view the engine always had; Boxshelf's shelf uses 1800 at (960, 42 % of 1080).
+    void set_camera(float distance, float origin_x, float origin_y) noexcept
+    {
+        camera_distance_ = distance;
+        camera_x_ = origin_x;
+        camera_y_ = origin_y;
+    }
     // Called once per frame by the renderer's custom layer: sets the state the passes need.
     void begin(int surface_width, int surface_height) noexcept;
     // Restores the state the 2D batch expects (culling off).
@@ -83,6 +91,7 @@ class Gl3D
                     float alpha, const CaseOp *reflect) noexcept;
 
     unsigned program_ = 0, vao_ = 0, buffer_ = 0;
+    float camera_distance_ = 2015.2846f, camera_x_ = 960.0f, camera_y_ = 540.0f;
     int surface_width_ = 1920, surface_height_ = 1080;
     Mat4 projection_{};
     // uniform locations

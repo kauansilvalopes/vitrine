@@ -6,12 +6,13 @@ cd -- "$(dirname -- "$0")/.."
 mkdir -p build/preview .local
 SDK=.deps/ps5-opengl/current/include
 [[ -d $SDK ]] || bash tools/prepare-opengl.sh >/dev/null
+clang-18 -O1 -c src/cJSON.c -o build/preview/cjson.o
 clang++-18 -std=c++20 -O1 -g -DBOXSHELF_HOST_PREVIEW -DBOXSHELF_GL=1 -DGL_GLEXT_PROTOTYPES=1 \
   -Isrc -I$SDK -ffunction-sections -fdata-sections \
-  tools/preview-boxshelf.cpp tools/gl_host_platform.cpp src/app/*.cpp src/gl_canvas.cpp src/gl3d.cpp \
-  src/gfx/*.cpp src/core/save_file.cpp \
+  tools/preview-boxshelf.cpp tools/gl_host_platform.cpp src/app/*.cpp src/data/*.cpp src/gl_canvas.cpp src/gl3d.cpp \
+  src/gfx/*.cpp src/core/save_file.cpp src/core/input.cpp build/preview/cjson.o \
   -Wl,--gc-sections -pthread -l:libEGL.so.1 -l:libGL.so.1 -lm -o build/preview/preview-boxshelf-gl
-modes=${*:-empty}
+modes=${*:-gc gc-first n3ds sw ps2 psx wii wiiu ps5 anim empty-shelf loading}
 for mode in $modes; do
   build/preview/preview-boxshelf-gl ".local/gl-$mode.ppm" "$mode"
 done

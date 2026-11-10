@@ -9,6 +9,8 @@ history. Newest entry at the bottom.
 - [ ] P1 Data (library roots, per-system styles, cover pipeline) — data layer + tests done on the PC; **open until the
       owner's real library is listed from the console** (`make library PS5_HOST=<ip>`), and the cover tools land
 - [ ] P2 The shelf, 1:1 (scene, top bar with system tabs, backdrop, info, hints, input) — **owner checkpoint on the console**
+      — scene/layout/input done and matched against Boxshelf in the PC preview; sort/filter panel, Menu and the
+      Spectrum theme's moving layer still to do; **waiting for the console check**
 - [ ] P3 Cases, 1:1 (per-system anatomy) — **owner checkpoint on the console**
 - [ ] P4 Details / inspect
 - [ ] P5 Museum
@@ -43,8 +45,19 @@ matched both, so the SDK is bit-identical to the one Estante builds with.
 ## Deviations from Boxshelf
 
 - **Font (temporary):** the engine's baked Inter Medium is used until P2 bakes Boxshelf's own OFL fonts.
-- **Vignette (temporary):** the radial layer of `.vignette` is approximated with linear side gradients (visible
-  banding in `ps5/.local/gl-empty.png`); P2 adds a radial-gradient shape to the batch shader.
+- ~~Vignette (temporary)~~ fixed in P2: the batch shader has a CSS radial/linear gradient shape (`Shape::radial`).
+- **Font:** Boxshelf's own fonts are used since P2 (Lexend 500/600/800 and the wordmark faces, converted from its
+  OFL woff2). The 3DS wordmark asks for Unbounded 800; Boxshelf only ships 700, which is what a browser draws too.
+- **Wordmark gradients at 95deg** (Switch, Switch 2, Media) are drawn top-to-bottom; the glow (CSS drop-shadow
+  16px) is a soft shadow box behind the word.
+- **"♥" in the hint bar** is drawn as a shape (no baked face has the glyph; Boxshelf takes it from the system font).
+- **Hint bar** shows the controller version only (the PS5 has no keyboard prompts). The ⧉ button is the DualSense
+  Create button, which the system keeps for itself: Settings / Museum will need another button (decide in P6).
+- **Clock:** Portuguese date like the owner's console; time zone from system params 4/5 (unconfirmed on PS5, logged).
+- **Covers / spines / glare / sheen / per-case floor strips:** placeholders until P3 (cover in the game's hue with
+  the system band; no spine text yet).
+- **Home shelf** is left out while it would be empty (needs play history, P7).
+- **Spectrum theme moving layer** (ribbons and dust, `themefx.js`) not drawn yet: only the colour wash (P6).
 
 ### D4 (2026-11-10) — Shelves and where each game comes from
 - Shelf order = Boxshelf's (Home, main/systems.js CONSOLES order, retro rows, Media last). Shelves for systems a PS5
@@ -55,6 +68,17 @@ matched both, so the SDK is bit-identical to the one Estante builds with.
 - Emulator games: the HD layout of §5, the emulators' own folders (Estante's `*_roots`) and the folders in their
   configs (PS5-ECAM json, PS5SX2 gs.ini, SwanStation ini; formats unconfirmed, see §5). Same path twice = one game.
 - Porpoise's mixed folder: GameCube vs Wii by extension until the disc id (disc-cache.tsv) says otherwise.
+
+### D5 (2026-11-10) — Shelf screen rules taken from Boxshelf
+- Measured against Boxshelf's renderer running in headless Chrome with `renderer/mock.js` at a true 1920x1080
+  viewport (headless defaults to 1904x985: window 1936x1175 gives 1920x1080) and transitions switched off so the
+  capture is the settled layout (`ps5/.local/ref/wrap.html`, not committed).
+- `setup.css` overrides `style.css` for the shelf and is what Boxshelf shows: title strip at 42% + bh/2 + 8vh, halo
+  2.6 bw x 1.9 bh without blur, floor ellipses 18%/26% and 55%/34%, no white rim on the selected case (inner glow),
+  tab bar tinted by the selection glow, hint bar rgba(10,12,22,.78).
+- Controller mapping = Boxshelf's PAD_HINTS: L2/R2 system, L1/R1 letter, △ flip (hold ♥), □ details, ✕ play,
+  R3 inspect, L3 shuffle, ⧉ settings (hold museum), ☰ menu (hold sort). D-pad up/down also switch system (keyboard ↑↓).
+- Shelf order of games = Boxshelf's scanner (`Intl.Collator` base sensitivity, numeric): case-insensitive, natural numbers.
 
 ## Notes from the owner (2026-11-10)
 - Estante's GameTDB tool crops everything to 2:3. This port needs each system's own cover shape (3DS landscape):
@@ -156,3 +180,48 @@ been listed yet** (console offline all session).
 **Next step:** when the console is on: `make library PS5_HOST=<ip>` (read-only), check `/appdb` for PPSA99850, fix
 rules against the real listing, close P1. Meanwhile start P2 (shelf scene, `place()`, top bar) in the preview with
 made-up games.
+
+## 2026-11-10 — P2 — the shelf screen, matched against Boxshelf in the preview
+**Done:**
+- Reference captures of Boxshelf itself (renderer + mock.js in headless Chrome, settled, 1920x1080; see D5).
+- Engine: CSS perspective camera in `gl3d` (screen = o + (p − o)·d/(d − z); the old 30° view is the default),
+  72 3D items per frame, `Shape::radial` CSS radial/linear gradients in the 2D batch, `DrawList::recolor()` for
+  gradient text.
+- Fonts: Boxshelf's Lexend 500/600/800 + the per-shelf wordmark faces (Chakra Petch, Syne, Unbounded, Michroma,
+  Audiowide, DM Serif Display italic, Bungee), converted from its OFL woff2 → `third_party/boxshelf-fonts`,
+  baked by `tools/bake-fonts.sh`; licences copied next to the fonts and into the app's assets.
+- `src/app/`: `css.hpp` (hsl, FNV-1a over UTF-16 = covers.js `hash`, CSS cubic-bezier, transition glides),
+  `shelf.*` (prepare(): Surprise me / Add games / Open <emulator> tiles in Boxshelf's order; go / letter / setSystem;
+  `place()`), `scene.*` (Spectrum wash with 0.8 s cross-fade after 120 ms, vignette, floor, breathing halo, 3D cases
+  back-to-front with the selected one's reflection and inner glow, per-shelf wordmark + tag + count, tab capsule with
+  gliding pill, clock row, counter, Menu, title strip with rise, PAD_HINTS bar, letter flash, loading / empty
+  state), `ui_fonts.*`, `clock.hpp`, `elf_client.*` + `library_loader.*` (the console reads /appdb, the configs and
+  every root on a worker thread through Elf Arsenal; GET only).
+- `main.cpp`: pad → InputTracker → shelf; library loaded in the background.
+- `tools/deploy.sh`: refuses to deploy if `/appdb` shows PPSA99850 owned by another app.
+
+**Files:** `ps5/src/app/*`, `ps5/src/gl3d.*`, `ps5/src/gl_canvas.hpp`, `ps5/src/gl_main.cpp`, `ps5/src/gfx/draw_list.*`,
+`ps5/src/gfx/gl_batch.cpp`, `ps5/src/data/scan.*`, `ps5/src/main.cpp`, `ps5/tests/test_shelf.cpp`,
+`ps5/tools/{preview-boxshelf.cpp,preview-boxshelf-gl.sh,bake-fonts.sh,deploy.sh,test-boxshelf.sh}`,
+`ps5/third_party/boxshelf-fonts/*`, `ps5/assets/fonts/*`, `PROGRESS.md`.
+
+**Tests run (WSL, `ps5/`):** `make test` → data 171/0 failed, shelf 57/0 failed (ASan + UBSan), list-library ok,
+preview ok. `make preview` → 12 modes. `make app` → builds, `integrity: valid`.
+
+**Verified on:** unit tests + PC preview (Mesa) compared with Boxshelf's own render. **Not on the console.**
+Side by side (`ps5/.local/ref/ref-gc-sel5.png` vs `ps5/.local/gl-gc.png`, `ref-n3ds-sel2.png` vs `gl-n3ds.png`):
+case positions within ~2 px (selected 775–1137 in both; stacks start at 160 / 1198 vs 158 / 1198; 3DS landscape
+678–1218 vs 678–1220), title strip, counter, Menu, tab bar, hint bar at the same places.
+Differences left: covers / spine text / glare / sheen / floor strips (P3), Spectrum's moving ribbons (P6), keyboard
+hints in the reference vs controller hints here (intended).
+
+**Screenshots:** `ps5/.local/gl-{gc,gc-first,n3ds,sw,ps2,psx,wii,wiiu,ps5,anim,empty-shelf,loading}.png`,
+references `ps5/.local/ref/ref-{gc-first,gc-sel5,n3ds-sel2}.png`.
+
+**Deviations:** see "Deviations from Boxshelf" (fonts, ♥, Create button, clock, placeholders, Home, theme layer).
+
+**Open questions for the owner:** 4. The Create (⧉) button: Boxshelf uses it for Settings / hold Museum, but the
+PS5 keeps it for screenshots. Which button should open Settings? (Default until you say: touchpad click.)
+
+**Next step:** owner checkpoint on the console (deploy needs his go-ahead). Then the sort/filter panel and the
+Menu, and P3 (case anatomy: real covers, spines with band and title, glare, sheen, floor strips).

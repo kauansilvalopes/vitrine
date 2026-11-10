@@ -131,6 +131,56 @@ void DrawList::gradient_rect_h(const Rect &r, float radius, Color left, Color ri
     instances_.back().extra[1] = 1.0f; // the shader blends along x instead of y
 }
 
+void DrawList::recolor(std::size_t first, float y0, float y1, Color top, Color bottom)
+{
+    const float span = std::max(y1 - y0, 1e-3f);
+    for (std::size_t k = first; k < instances_.size(); ++k)
+    {
+        Instance &i = instances_[k];
+        // Each glyph quad blends from its own top to its bottom: give it the band's colours at those rows.
+        const float a = std::clamp((i.rect[1] - y0) / span, 0.0f, 1.0f);
+        const float b = std::clamp((i.rect[1] + i.rect[3] - y0) / span, 0.0f, 1.0f);
+        // Keep each glyph's alpha (it already carries the opacity stack); take only the colour.
+        const float alpha = i.color_top[3];
+        const Color ca = mix(top, bottom, a), cb = mix(top, bottom, b);
+        set4(i.color_top, ca.r, ca.g, ca.b, alpha * top.a);
+        set4(i.color_bottom, cb.r, cb.g, cb.b, alpha * bottom.a);
+    }
+}
+
+void DrawList::radial_gradient(const Rect &r, float cx, float cy, float rx, float ry, Color inner, Color outer,
+                               float stop0, float stop1)
+{
+    if (rx <= 0.0f || ry <= 0.0f)
+        return;
+    Instance &i = append(0);
+    const Rect t = apply(r);
+    set4(i.rect, t.x, t.y, t.w, t.h);
+    set_color(i.color_top, inner);
+    set_color(i.color_bottom, outer);
+    // params: stops, mode 0 (ellipse); extra: centre and radii in output virtual units.
+    set4(i.params, stop0, std::max(stop1, stop0 + 1e-4f), 0.0f, static_cast<float>(Shape::radial));
+    set4(i.extra, apply_x(cx), apply_y(cy), rx * transform_.scale, ry * transform_.scale);
+}
+
+void DrawList::linear_gradient(const Rect &r, float degrees, Color from, Color to, float stop0, float stop1)
+{
+    // CSS gradient line: through the centre at `degrees`, long enough that the corners get 0 % and 100 %.
+    const float a = degrees * 3.14159265f / 180.0f;
+    const float dx = std::sin(a), dy = -std::cos(a);
+    const float half = 0.5f * (std::fabs(r.w * dx) + std::fabs(r.h * dy));
+    Instance &i = append(0);
+    const Rect t = apply(r);
+    set4(i.rect, t.x, t.y, t.w, t.h);
+    set_color(i.color_top, from);
+    set_color(i.color_bottom, to);
+    // mode 1 (linear): extra = start point and direction scaled by 1 / length.
+    const float sx = r.cx() - dx * half, sy = r.cy() - dy * half;
+    const float inv = 1.0f / std::max(2.0f * half * transform_.scale, 1e-3f);
+    set4(i.params, stop0, std::max(stop1, stop0 + 1e-4f), 1.0f, static_cast<float>(Shape::radial));
+    set4(i.extra, apply_x(sx), apply_y(sy), dx * inv, dy * inv);
+}
+
 void DrawList::chamfer_rect(const Rect &r, float cut, Color fill, float border, Color border_color)
 {
     Instance &i = append(0);

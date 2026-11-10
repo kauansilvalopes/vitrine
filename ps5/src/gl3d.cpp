@@ -245,24 +245,20 @@ void Gl3D::begin(int surface_width, int surface_height) noexcept
 {
     surface_width_ = surface_width;
     surface_height_ = surface_height;
-    const float fovy = 30.0f * 3.14159265f / 180.0f;
-    const float f = 1.0f / std::tan(fovy * 0.5f);
-    const float aspect = static_cast<float>(surface_width) / static_cast<float>(surface_height);
-    const float near_plane = 100.0f, far_plane = 6000.0f;
+    // CSS `perspective: d; perspective-origin: ox oy` on the 1920x1080 virtual canvas: a point (x, y, z) in pixel
+    // space (y down, z toward the viewer) lands at o + (p - o) * d / (d - z); the plane z = 0 maps 1:1.
+    // clip = (ndc * w, 0, w) with w = 1 - z / d; no depth buffer, so clip z stays 0 (always inside the volume).
+    const float d = camera_distance_, ox = camera_x_, oy = camera_y_;
     Mat4 p{};
-    p.m[0] = f / aspect;
-    p.m[5] = f;
-    p.m[10] = -(far_plane + near_plane) / (far_plane - near_plane);
-    p.m[11] = -1.0f;
-    p.m[14] = -2.0f * far_plane * near_plane / (far_plane - near_plane);
-    // eye = (x - 960, 540 - y, z - d): pixel space with y down, plane z = 0 maps 1:1 to the canvas.
-    const float d = 540.0f * f;
-    Mat4 view = mat4_identity();
-    view.m[5] = -1.0f;
-    view.m[12] = -960.0f;
-    view.m[13] = 540.0f;
-    view.m[14] = -d;
-    projection_ = mat4_multiply(p, view);
+    p.m[0] = 1.0f / 960.0f;                    // x -> clip x
+    p.m[8] = -(ox / 960.0f - 1.0f) / d;        // z -> clip x
+    p.m[12] = -1.0f;
+    p.m[5] = -1.0f / 540.0f;                   // y -> clip y
+    p.m[9] = -(1.0f - oy / 540.0f) / d;        // z -> clip y
+    p.m[13] = 1.0f;
+    p.m[11] = -1.0f / d;                       // z -> w
+    p.m[15] = 1.0f;
+    projection_ = p;
     glViewport(0, 0, surface_width, surface_height);
     glEnable(GL_BLEND);
     glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

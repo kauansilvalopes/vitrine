@@ -77,6 +77,8 @@ bool parse_fs_list(std::string_view json, std::vector<DirEntry> &out);
 std::vector<Game> games_from_appdb(std::string_view json);
 
 // ---- library ----
+// The order Boxshelf's scanner gives a shelf: case-insensitive, numbers by value ("Game 2" before "Game 10").
+bool title_less(std::string_view a, std::string_view b);
 struct Shelf
 {
     System system;

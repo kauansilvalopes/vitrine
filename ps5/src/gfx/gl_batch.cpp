@@ -224,6 +224,22 @@ void main()
             d = ((sc.y * p.x > sc.x * p.y) ? length(p - sc * ra) : ring) - rb;
         color = vec4(fill.rgb, fill.a * clamp(0.5 - d / px, 0.0, 1.0));
     }
+    else if (shape == 9)
+    {
+        // CSS gradients. Mode 0: ellipse centred at extra.xy with radii extra.zw. Mode 1: linear, from the
+        // point extra.xy along extra.zw (direction / length). Stops in params.xy.
+        float t;
+        if (v_params.z < 0.5)
+            t = length((v_virtual - v_extra.xy) / v_extra.zw);
+        else
+            t = dot(v_virtual - v_extra.xy, v_extra.zw);
+        float f = clamp((t - v_params.x) / (v_params.y - v_params.x), 0.0, 1.0);
+        // Blend premultiplied, as CSS does (a fade to transparent keeps its colour).
+        vec4 a = vec4(v_top.rgb * v_top.a, v_top.a), b = vec4(v_bottom.rgb * v_bottom.a, v_bottom.a);
+        vec4 m = mix(a, b, f);
+        color = m.a > 0.0 ? vec4(m.rgb / m.a, m.a) : vec4(0.0);
+        color.a *= clamp(0.5 - round_box(v_local, v_half, 0.0) / px, 0.0, 1.0);
+    }
     else if (shape == 6)
     {
         vec2 p = vec2(v_local.x, -v_local.y);

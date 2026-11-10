@@ -1,60 +1,857 @@
-// Boxshelf PS5 - the shelf scene. SPDX-License-Identifier: GPL-3.0-or-later
+// Boxshelf PS5 - the shelf screen. SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Every number below comes from Boxshelf's renderer (style.css / setup.css / app.js); the comment next to it says
+// which rule. CSS pixels are virtual pixels here (the canvas is 1920x1080, the size Boxshelf was measured at).
 #include "app/scene.hpp"
 
+#include "app/ui_fonts.hpp"
+#include "data/covers.hpp"
+
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace boxshelf::app
 {
 namespace
 {
+using hui::gfx::Align;
 using hui::gfx::Color;
+using hui::gfx::DrawList;
 using hui::gfx::Rect;
 
-constexpr float W = hui::gfx::kVirtualWidth;
-constexpr float H = hui::gfx::kVirtualHeight;
-// style.css: the track (and the shelf's focus point) sits at top:42%.
-constexpr float kTrackY = H * 0.42f;
+constexpr float W = 1920.0f, H = 1080.0f;
+constexpr float kTrackX = W * 0.5f, kTrackY = H * 0.42f; // #track{left:50%;top:42%}
+constexpr float kPerspective = 1800.0f;                  // #scene{perspective:1800px;perspective-origin:50% 42%}
+constexpr float kPi = 3.14159265f;
 
-// style.css `html,body{background:#07070c}`.
-constexpr std::uint32_t kBody = 0x07070c;
+const Color kInk = rgb(0xf3f5fb);                       // --ink
+const Color kInkDim = rgb(0xf3f5fb, 0.62f);             // --ink-dim
+const Color kGlass = Color{8 / 255.0f, 10 / 255.0f, 20 / 255.0f, 0.46f}; // --glass
+const Color kLine = Color{1, 1, 1, 0.16f};              // --line
 
-// `.vignette`, second layer: linear-gradient(to bottom, rgba(0,0,0,.25), transparent 20%, transparent 62%,
-// rgba(0,0,0,.5)). The first layer (a radial ellipse) is approximated with soft edge shadows until the
-// batch shader gains a radial-gradient shape (phase 2).
-void vignette(hui::gfx::DrawList &list)
+Color transparent(Color c)
 {
-    const Color black = Color::rgb(0x000000);
-    list.gradient_rect({0, 0, W, H * 0.20f}, 0, black.with_alpha(0.25f), black.with_alpha(0.0f));
-    list.gradient_rect({0, H * 0.62f, W, H * 0.38f}, 0, black.with_alpha(0.0f), black.with_alpha(0.5f));
-    // radial-gradient(ellipse 80% 70% at 50% 42%, transparent 35%, rgba(0,0,0,.5) 100%)
-    const float clear_half = W * 0.80f * 0.35f; // horizontal radius that stays transparent
-    const float side = W * 0.5f - clear_half;
-    list.gradient_rect_h({0, 0, side, H}, 0, black.with_alpha(0.5f), black.with_alpha(0.0f));
-    list.gradient_rect_h({W - side, 0, side, H}, 0, black.with_alpha(0.0f), black.with_alpha(0.5f));
+    return c.with_alpha(0.0f);
 }
 
-// `.floor`: centred under the shelf, radial-gradient(ellipse 50% 30% at 50% 30%, rgba(0,0,0,.45), transparent
-// 70%). The selected case's coloured glow (first layer) arrives with the cases in phase 2.
-void floor_shadow(hui::gfx::DrawList &list, float case_height)
+// CSS color-mix(in srgb, a p, b): premultiplied blend.
+Color color_mix(Color a, float p, Color b)
 {
-    const float top = kTrackY + case_height * 0.5f - 10.0f;
-    const float width = std::fmin(1400.0f, W * 1.4f), height = 160.0f;
-    // Ellipse centre and radii in the .floor box; the fade reaches transparent at 70 % of the radii.
-    const float cx = W * 0.5f, cy = top + height * 0.30f;
-    const float rx = width * 0.50f * 0.70f, ry = height * 0.30f * 0.70f;
-    const Rect core{cx - rx * 0.5f, cy - ry * 0.5f, rx, ry};
-    list.shadow(core, ry * 0.5f, ry, Color::rgb(0x000000, 0.45f));
+    const float aa = a.a * p, ba = b.a * (1.0f - p), alpha = aa + ba;
+    if (alpha <= 0.0f)
+        return {0, 0, 0, 0};
+    return {(a.r * aa + b.r * ba) / alpha, (a.g * aa + b.g * ba) / alpha, (a.b * aa + b.b * ba) / alpha, alpha};
+}
+
+// ---- text -------------------------------------------------------------------------------------------------------
+
+// Baseline for a line box starting at `top` (CSS: half-leading above, then the ascent).
+float baseline(const UiFont &f, float size, float top, float line_height = 0.0f)
+{
+    const float asc = f.font->ascent(size), desc = f.font->descent(size);
+    const float lh = line_height > 0.0f ? line_height : f.font->line_height(size);
+    return top + (lh - (asc + desc)) * 0.5f + asc;
+}
+
+float text(DrawList &list, Face face, std::string_view s, float x, float top, float size, Color color,
+           Align align = Align::left, float letter_spacing_em = 0.0f, float line_height = 0.0f)
+{
+    const UiFont f = app::face(face);
+    if (!f)
+        return 0.0f;
+    return list.text(*f.font, f.texture, s, x, baseline(f, size, top, line_height), size, color, align,
+                     letter_spacing_em * size);
+}
+
+float measure(Face face, std::string_view s, float size, float letter_spacing_em = 0.0f)
+{
+    const UiFont f = app::face(face);
+    return f ? f.font->measure(s, size, letter_spacing_em * size) : 0.0f;
+}
+
+std::string upper(std::string_view s)
+{
+    std::string out(s);
+    for (char &c : out)
+        if (c >= 'a' && c <= 'z')
+            c = static_cast<char>(c - 'a' + 'A');
+    return out;
+}
+
+// ---- per-shelf wordmarks (style.css "original per-shelf wordmarks") --------------------------------------------
+
+struct Wordmark
+{
+    Face face;
+    float size;    // clamp(min, vw, max) at 1920 wide: always the max here
+    float spacing; // letter-spacing, em
+    Color top, bottom, glow, tag;
+    bool upper = true;
+};
+
+Wordmark wordmark(data::System s)
+{
+    using data::System;
+    // .wm default: linear-gradient(180deg,#fff 15%,#cfd6e6 100%), glow rgba(255,255,255,.25), tag #c8cfdd;
+    // .sys-word: 800, clamp(22px,2.6vw,38px), .sys-word.wm resets letter-spacing to normal.
+    Wordmark w{Face::lexend800, 38.0f, 0.0f, rgb(0xffffff), rgb(0xcfd6e6), rgb(0xffffff, 0.25f), rgb(0xc8cfdd)};
+    switch (s)
+    {
+    case System::home:
+        return {Face::lexend800, 34, 0.10f, rgb(0xffffff), rgb(0xc9b8ff), Color{201 / 255.f, 184 / 255.f, 1, .4f}, rgb(0xbdb3e6)};
+    case System::gc:
+        return {Face::chakra700, 34, 0.14f, rgb(0xe2dbff), rgb(0x8b75ff), Color{139 / 255.f, 117 / 255.f, 1, .45f}, rgb(0xb7aaf2)};
+    case System::wii:
+        return {Face::syne800, 38, 0.24f, rgb(0xffffff), rgb(0x9cd2ff), Color{120 / 255.f, 190 / 255.f, 1, .5f}, rgb(0xbfe2ff)};
+    case System::wiiu:
+        return {Face::syne800, 38, 0.14f, rgb(0xffffff), rgb(0x5cc8ff), Color{60 / 255.f, 180 / 255.f, 1, .5f}, rgb(0xa8ddff)};
+    case System::sw: // 95deg gradient: drawn top to bottom here
+        return {Face::unbounded700, 36, 0.03f, rgb(0xff9a8a), rgb(0xff3d55), Color{1, 61 / 255.f, 85 / 255.f, .45f}, rgb(0xffb3b8)};
+    case System::sw2:
+        return {Face::unbounded700, 36, 0.03f, rgb(0xffb0a6), rgb(0xff2a3b), Color{1, 42 / 255.f, 59 / 255.f, .45f}, rgb(0xffc2c7)};
+    case System::psp:
+        return {Face::michroma400, 34, 0.32f, rgb(0xf7f8fc), rgb(0x8d95a8), Color{200 / 255.f, 210 / 255.f, 235 / 255.f, .3f}, rgb(0xaab1c2)};
+    case System::ps2:
+        return {Face::michroma400, 34, 0.20f, rgb(0xeef1ff), rgb(0x8fa6ff), Color{143 / 255.f, 166 / 255.f, 1, .4f}, rgb(0xb4c0f5)};
+    case System::ps3:
+        return {Face::michroma400, 34, 0.22f, rgb(0xf2f6ff), rgb(0x7ab4ff), Color{122 / 255.f, 180 / 255.f, 1, .4f}, rgb(0xb0cdf5)};
+    case System::ps4:
+        return {Face::audiowide400, 34, 0.18f, rgb(0xeaf1ff), rgb(0x6aa6ff), Color{106 / 255.f, 166 / 255.f, 1, .4f}, rgb(0xa9c6f5)};
+    case System::x360:
+        return {Face::bungee400, 34, 0.06f, rgb(0xeaffea), rgb(0x5fd35f), Color{95 / 255.f, 211 / 255.f, 95 / 255.f, .4f}, rgb(0xa9e6a9)};
+    case System::n3ds: // Unbounded 800 asked; 700 is the weight Boxshelf ships
+        return {Face::unbounded700, 36, 0.02f, rgb(0xff8a95), rgb(0xe60012), Color{230 / 255.f, 0, 18 / 255.f, .42f}, rgb(0xffb3ba)};
+    case System::psx:
+        w.top = rgb(0xf2f2f5), w.bottom = rgb(0x9aa3b5), w.glow = Color{160 / 255.f, 170 / 255.f, 190 / 255.f, .35f};
+        w.tag = rgb(0xc3c9d6);
+        return w;
+    case System::nds:
+        w.top = rgb(0xffffff), w.bottom = rgb(0xa7b1bf), w.glow = Color{167 / 255.f, 177 / 255.f, 191 / 255.f, .35f};
+        w.tag = rgb(0xcdd3dc);
+        return w;
+    case System::media:
+        return {Face::dmserif_italic, 44, 0.0f, rgb(0xefe6ff), rgb(0xa98bff), Color{169 / 255.f, 139 / 255.f, 1, .45f}, rgb(0xc9b8ff), false};
+    default: // PS5 and anything else: the plain .wm look
+        return w;
+    }
+}
+
+// The shelf's name on a tab (CONSOLES[].name; renderer shows `s.name`).
+const char *tab_name(data::System s)
+{
+    using data::System;
+    switch (s)
+    {
+    case System::home: return "Home";
+    case System::gc: return "GameCube";
+    case System::wii: return "Wii";
+    case System::wiiu: return "Wii U";
+    case System::sw: return "Switch";
+    case System::sw2: return "Switch 2";
+    case System::psp: return "PSP";
+    case System::ps2: return "PS2";
+    case System::ps3: return "PS3";
+    case System::ps4: return "PS4";
+    case System::ps5: return "PS5";
+    case System::x360: return "Xbox 360";
+    case System::n3ds: return "3DS";
+    case System::psx: return "PlayStation";
+    case System::nds: return "DS";
+    case System::media: return "Media";
+    default: return "";
+    }
+}
+
+// ---- 3D helpers (CSS transforms) --------------------------------------------------------------------------------
+
+struct V3
+{
+    float x, y, z;
+};
+// rotateY(deg) as CSS applies it, then the scene perspective.
+V3 rotate_y(V3 p, float deg)
+{
+    const float a = deg * kPi / 180.0f, c = std::cos(a), s = std::sin(a);
+    return {c * p.x + s * p.z, p.y, -s * p.x + c * p.z};
+}
+void project(V3 p, float &sx, float &sy)
+{
+    const float k = kPerspective / (kPerspective - p.z);
+    sx = kTrackX + (p.x - kTrackX) * k;
+    sy = kTrackY + (p.y - kTrackY) * k;
+}
+
+// The game's meta line (app.js metaFor()).
+std::vector<std::string> meta_for(const Item &it, data::System shelf)
+{
+    switch (it.kind)
+    {
+    case ItemKind::emulator:
+        return {"Emulator", "Open settings"};
+    case ItemKind::setup:
+        return {std::string("No ") + tab_name(shelf) + " games yet",
+                std::string("Cross opens ") + tab_name(shelf) + " settings to add a games folder"};
+    case ItemKind::random:
+        return {"Shuffle", "Lands on a random game"};
+    default:
+        break;
+    }
+    std::vector<std::string> out;
+    const auto &g = it.game;
+    // [region, ext, size, discs, manual, achievements]: what the PS5 knows today is the file's extension.
+    const auto dot = g.path.rfind('.');
+    if (!g.folder && dot != std::string::npos && g.path.size() - dot <= 6)
+        out.push_back(upper(g.path.substr(dot + 1)));
+    if (g.system == data::System::ps5 || g.system == data::System::ps4 || g.system == data::System::media)
+        out.push_back(g.app);
+    return out;
 }
 } // namespace
 
-void draw_scene(GlCanvas &canvas, const SceneInput &input) noexcept
+// =================================================================================================================
+
+void ShelfScreen::set_library(ShelfModel model, double now)
 {
-    (void)input;
-    auto &list = canvas.list();
-    list.rounded_rect({0, 0, W, H}, 0, Color::rgb(kBody));
-    // bh = min(vh*.4, vw*.22/ratio, 520..620); the PS5 case ratio (.787) gives the default height.
-    const float case_height = std::fmin(H * 0.4f, W * 0.22f / 0.787f);
-    floor_shadow(list, case_height);
-    vignette(list);
+    model_ = std::move(model);
+    shown_shelf_ = -1;
+    layout(now, true);
+    settle(now);
+}
+
+float ShelfScreen::case_height() const
+{
+    const auto &s = data::style(model_.empty() ? data::System::media : model_.cur().system);
+    return data::case_size(s, W, H).h; // measure(): min(vh*.4, vw*.22/ratio, 620)
+}
+
+float ShelfScreen::shelf_hue() const
+{
+    // app.js shelfHue(): the system's hue walked +-16 degrees along the shelf. No shelves: st() is STYLE.media.
+    if (model_.empty())
+        return static_cast<float>(data::style(data::System::media).hue);
+    const auto &s = data::style(model_.cur().system);
+    return static_cast<float>(s.hue) + (model_.position() * 2.0f - 1.0f) * 16.0f;
+}
+
+void ShelfScreen::build_slots(double now)
+{
+    slots_.assign(model_.empty() ? 0 : model_.cur().items.size(), Slot{});
+    shown_shelf_ = model_.empty() ? -1 : model_.current();
+    for (auto &s : slots_)
+        s.fade.duration = 0.4f; // .slot{transition: ..., opacity .4s}
+    layout(now, true);
+}
+
+void ShelfScreen::layout(double now, bool instant)
+{
+    if (model_.empty())
+        return;
+    if (shown_shelf_ != model_.current())
+    {
+        build_slots(now);
+        return;
+    }
+    const auto &st = data::style(model_.cur().system);
+    const auto size = data::case_size(st, W, H);
+    const int sel = model_.selected();
+    for (int i = 0; i < static_cast<int>(slots_.size()); ++i)
+    {
+        const Pose p = place(i, sel, size.w, size.d);
+        auto &s = slots_[static_cast<std::size_t>(i)];
+        s.x.set(p.x, now, instant);
+        s.z.set(p.z, now, instant);
+        s.ry.set(p.ry_deg, now, instant);
+        // .slot.far{opacity:0} past WIN-2
+        s.fade.set(std::abs(i - sel) > kWindow - 2 ? 0.0f : 1.0f, now, instant);
+    }
+}
+
+void ShelfScreen::settle(double now)
+{
+    if (!model_.empty() && shown_shelf_ != model_.current())
+        build_slots(now);
+    layout(now, true);
+    for (auto &s : slots_)
+        for (Glide *g : {&s.x, &s.z, &s.ry, &s.fade})
+            g->set(g->to, now, true);
+    // the pill takes its first place when the bar is first drawn; afterwards it is snapped here
+    if (pill_x_.placed)
+    {
+        pill_x_.set(pill_x_.to, now, true);
+        pill_w_.set(pill_w_.to, now, true);
+    }
+    bg_due_ = -1.0;
+    const Item *it = model_.item();
+    bg_now_ = {shelf_hue(), it ? static_cast<float>(it->hue) : 0.0f, -10.0};
+    bg_prev_ = bg_now_;
+    info_since_ = -10.0;
+    landed_at_ = now - 10.0;
+}
+
+void ShelfScreen::on_moved(double now)
+{
+    layout(now, false);
+    bg_due_ = now + 0.12; // updateBg(): setTimeout(..., 120)
+    info_since_ = now;    // .info rise 450 ms
+    landed_at_ = now;     // landSel(): .landed after 380 ms (sheen)
+}
+
+void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
+{
+    if (model_.empty())
+        return;
+    // D-pad / left stick: one case per step (go(sel +- 1)); the tracker repeats a held direction.
+    if (in.nav == hui::Direction::left && model_.step(-1))
+        on_moved(now);
+    else if (in.nav == hui::Direction::right && model_.step(1))
+        on_moved(now);
+    // L1 / R1: letter sections (HINTS: Letter = L1 R1).
+    if (const int d = letters_.step(in, dt))
+    {
+        std::string label;
+        if (model_.letter(d, &label))
+        {
+            flash_ = label;
+            flash_at_ = now;
+            on_moved(now);
+        }
+    }
+    // L2 / R2: System (PAD_HINTS: System = L2 R2); Up / Down do the same on the keyboard.
+    int sys = systems_.step(in, dt);
+    if (in.nav == hui::Direction::up)
+        sys = -1;
+    else if (in.nav == hui::Direction::down)
+        sys = 1;
+    if (sys && model_.switch_shelf(sys))
+    {
+        build_slots(now);
+        on_moved(now);
+        bg_due_ = now; // a new shelf repaints the wash at once
+    }
+}
+
+// ---- backdrop ---------------------------------------------------------------------------------------------------
+
+void ShelfScreen::draw_backdrop(DrawList &list, double now)
+{
+    if (model_.empty())
+        bg_now_ = bg_prev_ = {shelf_hue(), 0.0f, -10.0};
+    if (bg_due_ >= 0.0 && now >= bg_due_)
+    {
+        bg_due_ = -1.0;
+        const Item *it = model_.item();
+        Backdrop next{shelf_hue(), it ? static_cast<float>(it->hue) : 0.0f, now};
+        if (std::fabs(next.shelf_hue - bg_now_.shelf_hue) > 0.01f || next.game_hue != bg_now_.game_hue)
+        {
+            bg_prev_ = bg_now_;
+            bg_now_ = next;
+        }
+    }
+    // body{background:#07070c}
+    list.rounded_rect({0, 0, W, H}, 0, rgb(0x07070c));
+    // Theme "Spectrum" tint (app.js THEMES.spectrum.tint), on two layers cross-fading over .8 s (.bg-layer).
+    auto wash = [&](const Backdrop &b, float opacity)
+    {
+        if (opacity <= 0.0f)
+            return;
+        list.push_opacity(opacity);
+        const float sh = b.shelf_hue;
+        const Rect all{0, 0, W, H};
+        // linear-gradient(160deg, hsl(sh,55,22), hsl(sh+4,50,7))
+        list.linear_gradient(all, 160.0f, hsl(sh, 55, 22), hsl(sh + 4, 50, 7));
+        // radial-gradient(ellipse 75% 65% at 28% 22%, hsl(sh,72,46,.62), transparent 70%)
+        list.radial_gradient(all, W * .28f, H * .22f, W * .75f, H * .65f, hsl(sh, 72, 46, .62f),
+                             transparent(hsl(sh, 72, 46)), 0.0f, 0.70f);
+        // radial-gradient(ellipse 60% 60% at 82% 72%, hsl(sh+10,70,34,.5), transparent 70%)
+        list.radial_gradient(all, W * .82f, H * .72f, W * .60f, H * .60f, hsl(sh + 10, 70, 34, .5f),
+                             transparent(hsl(sh + 10, 70, 34)), 0.0f, 0.70f);
+        // radial-gradient(ellipse 40% 40% at 55% 55%, hsl(g.hue,60,42,.14), transparent 70%)
+        list.radial_gradient(all, W * .55f, H * .55f, W * .40f, H * .40f, hsl(b.game_hue, 60, 42, .14f),
+                             transparent(hsl(b.game_hue, 60, 42)), 0.0f, 0.70f);
+        list.pop_opacity();
+    };
+    const float t = static_cast<float>(std::clamp((now - bg_now_.since) / 0.8, 0.0, 1.0)); // opacity .8s ease
+    const float e = t * t * (3.0f - 2.0f * t);
+    wash(bg_prev_, 1.0f);
+    wash(bg_now_, e);
+    // .vignette: radial-gradient(ellipse 80% 70% at 50% 42%, transparent 35%, rgba(0,0,0,.5) 100%),
+    //            linear-gradient(to bottom, rgba(0,0,0,.25), transparent 20%, transparent 62%, rgba(0,0,0,.5))
+    const Color black = rgb(0x000000);
+    list.radial_gradient({0, 0, W, H}, W * .5f, H * .42f, W * .8f, H * .7f, black.with_alpha(0), black.with_alpha(.5f),
+                         0.35f, 1.0f);
+    list.gradient_rect({0, 0, W, H * .2f}, 0, black.with_alpha(.25f), black.with_alpha(0));
+    list.gradient_rect({0, H * .62f, W, H * .38f}, 0, black.with_alpha(0), black.with_alpha(.5f));
+}
+
+void ShelfScreen::draw_floor_and_halo(DrawList &list, double now)
+{
+    if (model_.empty())
+        return;
+    const float bh = case_height();
+    // landSel(): glow = hsl(halo(shelfHue), 95%, 62%, .62); Spectrum's halo is the shelf hue itself.
+    const Color glow = hsl(bg_now_.shelf_hue, 95, 62, .62f);
+    // .floor (setup.css): left 50%, top 42% + bh/2 - 10, width min(1400px,140vw), height 160;
+    // radial(ellipse 18% 26% at 50% 16%, glow, transparent 75%), radial(ellipse 55% 34% at 50% 26%, rgba(0,0,0,.55), transparent 72%)
+    const float fw = std::min(1400.0f, W * 1.4f), fh = 160.0f, fx = W * .5f - fw * .5f, fy = kTrackY + bh * .5f - 10.0f;
+    const Rect floor{fx, fy, fw, fh};
+    list.radial_gradient(floor, fx + fw * .5f, fy + fh * .26f, fw * .55f, fh * .34f, rgb(0, .55f), rgb(0, 0), 0, .72f);
+    list.radial_gradient(floor, fx + fw * .5f, fy + fh * .16f, fw * .18f, fh * .26f, glow, transparent(glow), 0, .75f);
+    // .sel-halo: centred on the track, bw*2.6 x bh*1.9 (setup.css; its blur filter is off there),
+    // radial-gradient(closest-side, glow, transparent), "breathe" 3.4 s ease-in-out: opacity 1 -> .55 -> 1.
+    const auto size = data::case_size(data::style(model_.cur().system), W, H);
+    const float hw = size.w * 2.6f, hh = size.h * 1.9f;
+    const float phase = static_cast<float>(std::fmod(now, 3.4) / 3.4);
+    const float wave = 0.5f - 0.5f * std::cos(phase * 2.0f * kPi); // 0 -> 1 -> 0
+    const float opacity = 1.0f - 0.45f * wave;
+    list.radial_gradient({kTrackX - hw * .5f, kTrackY - hh * .5f, hw, hh}, kTrackX, kTrackY, hw * .5f, hh * .5f,
+                         glow.with_alpha(glow.a * opacity), transparent(glow), 0.0f, 1.0f);
+}
+
+// ---- cases ------------------------------------------------------------------------------------------------------
+
+std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item)
+{
+    // Placeholder front until the cover pipeline lands (P3): the style's band over a wash in the game's hue, at the
+    // system's own proportions (covers.js drawFront geometry). Kept per item; the canvas caches the texture.
+    const auto &st = data::style(item.system);
+    const std::string key = item.game.id.empty() ? std::string(st.key) + "|" + item.title : item.game.id;
+    auto it = covers_.find(key);
+    if (it == covers_.end())
+    {
+        const auto spec = data::cover_spec(st, 140);
+        std::vector<std::uint32_t> px(static_cast<std::size_t>(spec.width * spec.height));
+        const Color top = hsl(static_cast<float>(item.hue), 55, 46), bottom = hsl(static_cast<float>(item.hue) + 40, 60, 16);
+        const Color band = rgb(st.band.bg);
+        for (int y = 0; y < spec.height; ++y)
+        {
+            const float t = static_cast<float>(y) / static_cast<float>(spec.height);
+            Color c = hui::gfx::mix(top, bottom, t);
+            if (y < spec.band_height)
+                c = band;
+            const auto r = static_cast<std::uint32_t>(c.r * 255), g = static_cast<std::uint32_t>(c.g * 255),
+                       b = static_cast<std::uint32_t>(c.b * 255);
+            for (int x = 0; x < spec.width; ++x)
+                px[static_cast<std::size_t>(y * spec.width + x)] = 0xff000000u | (b << 16) | (g << 8) | r;
+        }
+        cover_size_[key] = spec.width;
+        it = covers_.emplace(key, std::move(px)).first;
+    }
+    const int w = cover_size_[key];
+    const int h = static_cast<int>(it->second.size()) / w;
+    return canvas.texture_for(it->second.data(), static_cast<unsigned>(w), static_cast<unsigned>(h));
+}
+
+void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
+{
+    if (model_.empty())
+        return;
+    const auto &shelf = model_.cur();
+    const auto &st = data::style(shelf.system);
+    const auto size = data::case_size(st, W, H);
+    const float bw = size.w, bh = size.h, bd = size.d;
+    const int sel = model_.selected();
+    canvas.set_camera(kPerspective, kTrackX, kTrackY);
+
+    // Back to front: the farthest cases first, the selected one last.
+    std::vector<int> order;
+    for (int i = 0; i < static_cast<int>(slots_.size()); ++i)
+        if (std::abs(i - sel) <= kWindow)
+            order.push_back(i);
+    std::stable_sort(order.begin(), order.end(),
+                     [&](int a, int b) { return std::abs(a - sel) > std::abs(b - sel); });
+
+    const Color side = rgb(st.case_side);
+    for (int i : order)
+    {
+        const auto &slot = slots_[static_cast<std::size_t>(i)];
+        const float alpha = slot.fade.at(now);
+        if (alpha <= 0.01f)
+            continue;
+        const Item &item = shelf.items[static_cast<std::size_t>(i)];
+        const float x = slot.x.at(now), z = slot.z.at(now), ry = slot.ry.at(now);
+        const bool is_sel = i == sel;
+        CaseOp op;
+        op.x = kTrackX + x;
+        op.y = kTrackY;
+        op.z = z;
+        op.width = bw;
+        op.height = bh;
+        op.depth = bd;
+        op.yaw = ry * kPi / 180.0f;
+        op.front = cover_texture(canvas, item);
+        op.side_r = side.r, op.side_g = side.g, op.side_b = side.b;
+        op.alpha = alpha;
+        op.shade = is_sel ? 1.0f : 0.66f; // .slot:not(.sel) .dim{opacity:.34}
+        // Floor: the selected case's real reflection (setup.css box-reflect: below 3px, .3 fading over 42 %)
+        if (is_sel)
+        {
+            CaseOp r = op;
+            r.reflection = true;
+            r.floor_y = kTrackY + bh * .5f + 1.5f;
+            r.fade_length = bh * .42f;
+            canvas.case3d(r);
+        }
+        canvas.case3d(op);
+        if (is_sel)
+        {
+            // setup.css: .slot.sel .f-front{box-shadow: inset 0 0 calc(22px*OS) calc(-4px*OS) var(--glow)} (no white
+            // rim). The face is drawn as a soft band of the game's glow inside each edge of the projected front.
+            float px[4], py[4];
+            const float cs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+            for (int k = 0; k < 4; ++k)
+            {
+                const V3 p = rotate_y({cs[k][0] * bw * .5f, cs[k][1] * bh * .5f, bd * .5f}, ry);
+                project({kTrackX + x + p.x, kTrackY + p.y, z + p.z}, px[k], py[k]);
+            }
+            const Color g = hsl(static_cast<float>(item.hue), 90, 62, .5f * alpha);
+            const float band = 22.0f * 1.4f * .5f; // blur radius / 2 past the -4px spread
+            const float l = std::max(px[0], px[3]), r = std::min(px[1], px[2]);
+            const float t = std::max(py[0], py[1]), b = std::min(py[2], py[3]);
+            auto &hud = canvas.list();
+            hud.gradient_rect_h({l, t, band, b - t}, 0, g, transparent(g));
+            hud.gradient_rect_h({r - band, t, band, b - t}, 0, transparent(g), g);
+            hud.gradient_rect({l, t, r - l, band}, 0, g, transparent(g));
+            hud.gradient_rect({l, b - band, r - l, band}, 0, transparent(g), g);
+        }
+    }
+}
+
+// ---- top bar ----------------------------------------------------------------------------------------------------
+
+void ShelfScreen::draw_top_bar(DrawList &list, double now, const Clock &clock)
+{
+    // .hud-top: padding 26px 32px; brand left, tabs centre, clock / counter / Menu right.
+    const float top = 26.0f, left = 32.0f, right = W - 32.0f;
+    if (!model_.empty())
+    {
+        const auto sys = model_.cur().system;
+        const Wordmark wm = wordmark(sys);
+        const auto &st = data::style(sys);
+        // .wm-main: line-height 1, gradient text, drop-shadow(0 2px 16px glow)
+        const std::string word = wm.upper ? upper(st.word) : std::string(st.word);
+        const float ww = measure(wm.face, word, wm.size, wm.spacing);
+        list.shadow({left, top + 2, ww, wm.size}, wm.size * .3f, 16.0f, wm.glow.with_alpha(wm.glow.a * .6f));
+        const std::size_t first = list.mark();
+        text(list, wm.face, word, left, top, wm.size, kInk, Align::left, wm.spacing, wm.size);
+        list.recolor(first, top, top + wm.size, wm.top, wm.bottom);
+        // .wm-tag: 600 9px, letter-spacing .38em, uppercase; gap 7px
+        float y = top + wm.size + 7.0f;
+        text(list, Face::lexend600, upper(st.word_sub), left, y, 9.0f, wm.tag, Align::left, .38f, 9.0f);
+        // .sys-count: margin-top 8px; 11px 500, .24em, uppercase, --ink-dim
+        y += 9.0f + 8.0f;
+        char count[48];
+        const int n = model_.cur().game_count;
+        std::snprintf(count, sizeof count, "%d %s", n, n == 1 ? "GAME" : "GAMES");
+        text(list, Face::lexend500, count, left, y, 11.0f, kInkDim, Align::left, .24f);
+    }
+
+    // .tabs: glass capsule, padding 4, gap 4; .tab 6px 14px, 12px 500; the active one on a #ebebf0 pill.
+    if (model_.shelf_count() > 0)
+    {
+        const float pad = 4.0f, gap = 4.0f, tab_h = 12.0f * 1.25f + 12.0f;
+        std::vector<float> widths;
+        float total = pad * 2;
+        for (int i = 0; i < model_.shelf_count(); ++i)
+        {
+            widths.push_back(measure(Face::lexend500, tab_name(model_.shelf(i).system), 12.0f) + 28.0f);
+            total += widths.back() + (i ? gap : 0.0f);
+        }
+        const float x0 = W * .5f - total * .5f, h = tab_h + pad * 2 + 2; // 1px border each side
+        // setup.css: background color-mix(in srgb, --sel-glow 30%, rgba(8,10,20,.4)),
+        // border-color color-mix(in srgb, --sel-glow 45%, rgba(255,255,255,.1)); no blur.
+        const Color glow = hsl(bg_now_.shelf_hue, 95, 62, .62f);
+        list.bordered_rect({x0, top, total, h}, h * .5f, color_mix(glow, .3f, Color{8 / 255.f, 10 / 255.f, 20 / 255.f, .4f}),
+                           1.0f, color_mix(glow, .45f, Color{1, 1, 1, .1f}));
+        float x = x0 + pad;
+        float sel_x = x, sel_w = widths.empty() ? 0 : widths[0];
+        for (int i = 0; i < model_.shelf_count(); ++i)
+        {
+            if (i == model_.current())
+                sel_x = x, sel_w = widths[static_cast<std::size_t>(i)];
+            x += widths[static_cast<std::size_t>(i)] + gap;
+        }
+        pill_x_.duration = pill_w_.duration = .45f;
+        pill_x_.ease = pill_w_.ease = kPill;
+        pill_x_.set(sel_x, now);
+        pill_w_.set(sel_w, now);
+        list.rounded_rect({pill_x_.at(now), top + pad + 1, pill_w_.at(now), tab_h}, tab_h * .5f, rgb(0xebebf0));
+        x = x0 + pad;
+        for (int i = 0; i < model_.shelf_count(); ++i)
+        {
+            const float w = widths[static_cast<std::size_t>(i)];
+            const bool on = i == model_.current();
+            text(list, Face::lexend500, tab_name(model_.shelf(i).system), x + w * .5f, top + pad + 1 + 6, 12.0f,
+                 on ? rgb(0x10121a) : kInkDim, Align::center, 0.0f, 15.0f);
+            x += w + gap;
+        }
+    }
+
+    // .right: column, items right-aligned, gap 10px. Clock row: date (13px 500 .08em dim) + time (b: 700 15px ink).
+    {
+        // The row is as tall as its 34px icon buttons (sound, controller), as measured on the reference capture.
+        float y = top;
+        const float row = 36.0f;
+        const float tw = measure(Face::lexend800, clock.time, 15.0f, .08f);
+        text(list, Face::lexend800, clock.time, right, y + (row - 21.0f) * .5f, 15.0f, kInk, Align::right, .08f, 21.0f);
+        const float dw = measure(Face::lexend500, clock.date, 13.0f, .08f);
+        text(list, Face::lexend500, clock.date, right - tw - 8.0f, y + (row - 18.0f) * .5f + 1.0f, 13.0f, kInkDim,
+             Align::right, .08f, 18.0f);
+        // controller (lit while a pad is connected) and sound icons, 12px apart (.clock-row gap)
+        {
+            const float cx = right - tw - 8.0f - dw - 12.0f - 12.0f, cy = y + row * .5f;
+            list.bordered_rect({cx - 11.0f, cy - 6.0f, 22.0f, 12.0f}, 6.0f, Color{0, 0, 0, 0}, 1.4f, kInkDim);
+            list.circle(cx - 5.0f, cy, 1.4f, kInkDim);
+            list.circle(cx + 5.0f, cy, 1.4f, kInkDim);
+            const float sx = cx - 11.0f - 12.0f - 24.0f - 12.0f, sy = cy;
+            list.rounded_rect({sx, sy - 3.0f, 4.0f, 6.0f}, 1.0f, kInkDim);
+            list.triangle({sx + 1.0f, sy - 6.0f, 8.0f, 12.0f}, kInkDim, 0.0f, -1.5708f);
+            list.arc(sx + 6.0f, sy, 6.0f, 1.4f, 0.6f, 1.9f, kInkDim);
+            list.arc(sx + 6.0f, sy, 10.0f, 1.4f, 0.5f, 2.1f, kInkDim);
+        }
+        y += row + 10.0f;
+        // .counter: 14px 500 tabular, .06em; "<b>sel+1</b> / n"
+        if (!model_.empty() && !model_.cur().items.empty())
+        {
+            char tail[24], head[16];
+            std::snprintf(head, sizeof head, "%d", model_.selected() + 1);
+            std::snprintf(tail, sizeof tail, " / %d", static_cast<int>(model_.cur().items.size()));
+            const float wt = measure(Face::lexend500, tail, 14.0f, .06f);
+            text(list, Face::lexend500, tail, right, y, 14.0f, kInk, Align::right, .06f, 18.0f);
+            text(list, Face::lexend800, head, right - wt, y, 14.0f, kInk, Align::right, .06f, 18.0f);
+        }
+        y += 18.0f + 10.0f;
+        // .mini Menu: 11px dim, padding 4px 8px, radius 999, 1px line border; a hamburger glyph then "Menu"
+        const float mw = measure(Face::lexend500, "Menu", 11.0f) + 14.0f + 6.0f + 16.0f, mh = 22.0f;
+        list.bordered_rect({right - mw, y, mw, mh}, mh * .5f, Color{0, 0, 0, 0}, 1.0f, kLine);
+        const float gx = right - mw + 8.0f + 1.0f, gy = y + mh * .5f;
+        for (float dy : {-3.5f, 0.0f, 3.5f})
+            list.line(gx, gy + dy, gx + 11.0f, gy + dy, 1.4f, kInkDim);
+        text(list, Face::lexend500, "Menu", right - 8.0f, y + 4.0f, 11.0f, kInkDim, Align::right, 0.0f, 14.0f);
+    }
+}
+
+// ---- title strip ------------------------------------------------------------------------------------------------
+
+void ShelfScreen::draw_info(DrawList &list, double now)
+{
+    // .info: top calc(42% + bh/2 + 4.5vh), centred. .g-title 44px 500 (clamp(22px,3vw,44px)), text-shadow;
+    // .g-meta: margin-top 6px, 14px dim, .04em, spans joined by a "·" with .6em each side at .7 opacity.
+    const float bh = case_height();
+    float y = kTrackY + bh * .5f + H * .08f; // setup.css: .info{top:calc(42% + var(--bh)/2 + 8vh)}
+    // .info.swap: rise 450 ms cubic-bezier(.22,.9,.25,1) from translateY(8px), opacity 0
+    const float t = kSlide(static_cast<float>(std::clamp((now - info_since_) / 0.45, 0.0, 1.0)));
+    list.push_opacity(t);
+    y += 8.0f * (1.0f - t);
+    const Item *it = model_.item();
+    const std::string title = it ? it->title : "No games here yet";
+    list.shadow({W * .5f - measure(Face::lexend500, title, 44.0f) * .5f, y + 10, measure(Face::lexend500, title, 44.0f), 34},
+                12, 20, Color{0, 0, 0, .4f});
+    text(list, Face::lexend500, title, W * .5f, y, 44.0f, kInk, Align::center, -.005f);
+    y += app::face(Face::lexend500).font->line_height(44.0f) + 6.0f;
+    if (it)
+    {
+        const auto parts = meta_for(*it, model_.cur().system);
+        const float dot_gap = 14.0f * .6f;
+        float total = 0;
+        for (std::size_t k = 0; k < parts.size(); ++k)
+            total += measure(Face::lexend500, parts[k], 14.0f, .04f) + (k ? dot_gap * 2 + measure(Face::lexend500, "\xc2\xb7", 14.0f) : 0);
+        float x = W * .5f - total * .5f;
+        for (std::size_t k = 0; k < parts.size(); ++k)
+        {
+            if (k)
+            {
+                x += dot_gap;
+                x += text(list, Face::lexend500, "\xc2\xb7", x, y, 14.0f, kInkDim.with_alpha(kInkDim.a * .7f));
+                x += dot_gap;
+            }
+            x += text(list, Face::lexend500, parts[k], x, y, 14.0f, kInkDim, Align::left, .04f);
+        }
+    }
+    list.pop_opacity();
+}
+
+// ---- hints ------------------------------------------------------------------------------------------------------
+
+void ShelfScreen::draw_hints(DrawList &list)
+{
+    // PAD_HINTS with PlayStation glyphs (app.js glyph(): SHAPES for the face buttons, keycaps for the rest).
+    struct Hint
+    {
+        const char *keys[2];
+        const char *label;
+        const char *hold;
+    };
+    const Item *it = model_.item();
+    const char *play = !it ? "Set up"
+                       : it->kind == ItemKind::setup ? "Set up"
+                       : it->kind == ItemKind::emulator ? "Open"
+                       : it->kind == ItemKind::random ? "Pick a game"
+                                                      : "Play";
+    const Hint hints[] = {
+        {{"L2", "R2"}, "System", nullptr},
+        {{"tri", nullptr}, "Flip", "\xe2\x99\xa5"},
+        {{"sq", nullptr}, "Details", nullptr},
+        {{"x", nullptr}, play, nullptr},
+        {{"R3", nullptr}, "Inspect", nullptr},
+        {{"L3", nullptr}, "Shuffle", nullptr},
+        {{"share", nullptr}, "Settings", "Museum"},
+        {{"menu", nullptr}, "Menu", "Sort"},
+    };
+    const float font = 12.0f, key_h = 18.0f, hint_h = 28.0f, pad_x = 10.0f, gap_in = 7.0f, gap = 6.0f;
+    auto key_width = [&](const char *k)
+    {
+        const std::string_view s(k);
+        if (s == "tri" || s == "sq" || s == "x" || s == "o")
+            return 19.0f;
+        if (s == "share" || s == "menu")
+            return 18.0f;
+        return std::max(22.0f, measure(Face::lexend600, k, 10.0f) + 10.0f + 2.0f);
+    };
+    auto hold_width = [&](const char *h)
+    {
+        if (!h)
+            return 0.0f;
+        const float label = std::string_view(h) == "\xe2\x99\xa5" ? 12.0f : measure(Face::lexend500, h, font);
+        return 4.0f + measure(Face::lexend600, "HOLD", 9.5f, .06f) + 10.0f + 4.0f + label;
+    };
+    std::vector<float> widths;
+    float total = 8.0f * 2;
+    for (const auto &h : hints)
+    {
+        float w = pad_x * 2;
+        for (const char *k : h.keys)
+            if (k)
+                w += key_width(k) + 3.0f;
+        w -= 3.0f;
+        w += gap_in + measure(Face::lexend500, h.label, font);
+        w += hold_width(h.hold);
+        widths.push_back(w);
+        total += w + gap;
+    }
+    total -= gap;
+    const float bar_h = hint_h + 12.0f + 2.0f;
+    const float x0 = W * .5f - total * .5f, y0 = H - 24.0f - bar_h;
+    // setup.css: .hints{backdrop-filter:none; background:rgba(10,12,22,.78)}
+    list.bordered_rect({x0, y0, total, bar_h}, bar_h * .5f, Color{10 / 255.f, 12 / 255.f, 22 / 255.f, .78f}, 1.0f, kLine);
+    float x = x0 + 8.0f + 1.0f;
+    const float cy = y0 + bar_h * .5f;
+    for (std::size_t n = 0; n < std::size(hints); ++n)
+    {
+        const auto &h = hints[n];
+        float hx = x + pad_x;
+        for (const char *k : h.keys)
+        {
+            if (!k)
+                continue;
+            const std::string_view s(k);
+            const float kw = key_width(k);
+            if (s == "tri") // --tri:#3fd0b6
+                list.triangle({hx + 3.5f, cy - 6.0f, 12.0f, 11.0f}, rgb(0x3fd0b6), 1.6f);
+            else if (s == "sq") // --sq:#ee8fd6
+                list.bordered_rect({hx + 4.0f, cy - 5.5f, 11.0f, 11.0f}, 1.0f, Color{0, 0, 0, 0}, 1.6f, rgb(0xee8fd6));
+            else if (s == "x") // --cross:#86a8ff
+            {
+                list.line(hx + 4.5f, cy - 5.0f, hx + 14.5f, cy + 5.0f, 1.8f, rgb(0x86a8ff));
+                list.line(hx + 14.5f, cy - 5.0f, hx + 4.5f, cy + 5.0f, 1.8f, rgb(0x86a8ff));
+            }
+            else if (s == "o") // --circ:#ff7a7a
+                list.ring(hx + 9.5f, cy, 6.0f, 1.6f, rgb(0xff7a7a));
+            else if (s == "menu") // three bars
+            {
+                for (float dy : {-4.0f, 0.0f, 4.0f})
+                    list.line(hx + 3.0f, cy + dy, hx + 15.0f, cy + dy, 1.6f, kInk);
+            }
+            else if (s == "share") // two overlapping rounded squares (the Create button's mark)
+            {
+                list.bordered_rect({hx + 2.0f, cy - 6.0f, 10.0f, 10.0f}, 2.0f, Color{0, 0, 0, 0}, 1.4f, kInk);
+                list.bordered_rect({hx + 6.0f, cy - 2.0f, 10.0f, 10.0f}, 2.0f, Color{0, 0, 0, 0}, 1.4f, kInk);
+            }
+            else // .g keycap: 1px rgba(255,255,255,.55) border, radius 5, 10px 600
+            {
+                list.bordered_rect({hx, cy - key_h * .5f, kw, key_h}, 5.0f, Color{0, 0, 0, 0}, 1.0f, Color{1, 1, 1, .55f});
+                text(list, Face::lexend600, k, hx + kw * .5f, cy - key_h * .5f + 1.0f, 10.0f, kInk, Align::center, 0, 16.0f);
+            }
+            hx += kw + 3.0f;
+        }
+        hx += gap_in - 3.0f;
+        hx += text(list, Face::lexend500, h.label, hx, cy - 8.0f, font, kInk, Align::left, 0, 16.0f);
+        if (h.hold)
+        {
+            // .hint .hold: margin-left -1px, gap 4px, opacity .82; <i>hold</i>: 9.5px 600 .06em upper, pill rgba(255,255,255,.1)
+            hx += 4.0f;
+            const float iw = measure(Face::lexend600, "HOLD", 9.5f, .06f) + 10.0f;
+            list.rounded_rect({hx, cy - 7.5f, iw, 15.0f}, 4.0f, Color{1, 1, 1, .1f * .82f});
+            text(list, Face::lexend600, "HOLD", hx + 5.0f, cy - 7.0f, 9.5f, Color{1, 1, 1, .7f * .82f}, Align::left, .06f, 14.0f);
+            hx += iw + 4.0f;
+            if (std::string_view(h.hold) == "\xe2\x99\xa5")
+            {
+                // "♥": no baked face has it (Boxshelf gets it from the system font): two lobes and a point
+                const Color heart = kInk.with_alpha(.82f);
+                list.circle(hx + 3.2f, cy - 1.6f, 3.2f, heart);
+                list.circle(hx + 8.8f, cy - 1.6f, 3.2f, heart);
+                list.triangle({hx + .2f, cy - 1.0f, 11.6f, 6.6f}, heart, 0.0f, 3.14159265f);
+            }
+            else
+                text(list, Face::lexend500, h.hold, hx, cy - 8.0f, font, kInk.with_alpha(.82f), Align::left, 0, 16.0f);
+        }
+        x += widths[n] + gap;
+    }
+}
+
+void ShelfScreen::draw_letter_flash(DrawList &list, double now)
+{
+    // .letter-flash: centred on the track, min(22vh,180px) 700; 900 ms ease-out: 0 -> .95 (at 15 %, scale .8 -> 1)
+    // -> 0 (scale 1.08)
+    const float t = static_cast<float>((now - flash_at_) / 0.9);
+    if (t < 0.0f || t >= 1.0f || flash_.empty())
+        return;
+    const float e = 1.0f - (1.0f - t) * (1.0f - t); // ease-out
+    float opacity, scale;
+    if (e < 0.15f)
+        opacity = .95f * e / .15f, scale = .8f + .2f * e / .15f;
+    else
+        opacity = .95f * (1.0f - (e - .15f) / .85f), scale = 1.0f + .08f * (e - .15f) / .85f;
+    const float size = std::min(H * .22f, 180.0f) * scale;
+    list.push_opacity(opacity);
+    text(list, Face::lexend800, flash_, W * .5f, kTrackY - size * .5f, size, kInk, Align::center, 0, size);
+    list.pop_opacity();
+}
+
+void ShelfScreen::draw_empty(DrawList &list)
+{
+    // index.html #empty: "Nothing on the shelf yet" / "Connect your emulators and game folders" (+ Run setup, which
+    // the PS5 build has no setup screen for yet). While the library is read, the kicker says what is being read.
+    const bool loading = !status_.empty();
+    const float cy = kTrackY;
+    text(list, Face::lexend600, loading ? upper(status_) : "NOTHING ON THE SHELF YET", W * .5f, cy - 52.0f, 11.0f,
+         kInkDim, Align::center, .24f, 14.0f);
+    text(list, Face::lexend600, loading ? "Reading your library" : "Connect your emulators and game folders", W * .5f,
+         cy - 28.0f, 34.0f, kInk, Align::center, 0.0f, 42.0f);
+    text(list, Face::lexend500,
+         loading ? "Installed games, then the folders your emulators use"
+                 : "Put your games in Emulation/roms/<system> on your drive and open Boxshelf again.",
+         W * .5f, cy + 24.0f, 16.0f, kInkDim, Align::center, 0.0f, 22.0f);
+}
+
+void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
+{
+    if (!model_.empty() && shown_shelf_ != model_.current())
+        build_slots(now);
+    draw_backdrop(canvas.list(), now);
+    if (model_.empty())
+    {
+        draw_empty(canvas.list());
+        draw_top_bar(canvas.list(), now, clock);
+        return;
+    }
+    draw_floor_and_halo(canvas.list(), now);
+    draw_cases(canvas, now);
+    auto &hud = canvas.list();
+    draw_info(hud, now);
+    draw_top_bar(hud, now, clock);
+    draw_letter_flash(hud, now);
+    if (!model_.empty())
+        draw_hints(hud);
 }
 } // namespace boxshelf::app

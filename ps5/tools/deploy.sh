@@ -132,6 +132,22 @@ fi
 echo "==> [deploy] Building the app folder"
 make -C "$root" --no-print-directory app
 
+# Read-only safety check (Elf Arsenal /appdb): never overwrite another app that already uses this title id.
+if [[ ${DEPLOY_DRY_RUN:-0} != 1 ]]; then
+    python3 - "$host" "$title_id" <<'PY'
+import json, subprocess, sys
+host, title_id = sys.argv[1:]
+r = subprocess.run(["curl", "-sf", "--max-time", "10", f"http://{host}:6969/appdb"], capture_output=True)
+if r.returncode != 0:
+    sys.exit(f"cannot read http://{host}:6969/appdb (is Elf Arsenal running?)")
+titles = json.loads(r.stdout or b"{}").get("titles", [])
+mine = [t for t in titles if t.get("titleId") == title_id]
+if mine and mine[0].get("titleName") not in ("Boxshelf", None, ""):
+    sys.exit(f"{title_id} is already used by {mine[0].get('titleName')!r}: refusing to overwrite it")
+print(f"==> [deploy] /appdb: {title_id} {'is ours' if mine else 'is free'} ({len(titles)} titles)")
+PY
+fi
+
 artifact="$root/dist/$title_id"
 [[ -d $artifact ]] || {
     echo "missing deployment folder: $artifact" >&2

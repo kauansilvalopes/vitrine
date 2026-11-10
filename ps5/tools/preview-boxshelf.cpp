@@ -1,9 +1,10 @@
-// Boxshelf PS5 - PC preview: renders the real scene code through the kit's GL renderer on Mesa's surfaceless
-// EGL (llvmpipe) into a 1920x1080 PPM. Adapted from Estante's tools/preview-estante.cpp.
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Boxshelf PS5 - PC preview: renders the real shelf screen through the kit's GL renderer on Mesa's surfaceless EGL
+// (llvmpipe) into 1920x1080 PPMs. Adapted from Estante's tools/preview-estante.cpp. SPDX-License-Identifier: GPL-3.0-or-later
 //
 // usage: preview-boxshelf-gl <out.ppm> <mode>
+// The library is made up (the same invented titles as Boxshelf's renderer/mock.js), so no real game is needed.
 #include "app/scene.hpp"
+#include "app/ui_fonts.hpp"
 #include "core/save_file.hpp"
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
@@ -52,6 +53,7 @@ struct GlHost
         if (!hui::save::read_file("assets/fonts/inter.huifont", &bytes) || !font.load(bytes))
             return false;
         font_texture = renderer.batch().create_font_texture(font);
+        boxshelf::app::load_ui_fonts(renderer.batch(), "assets/fonts", &font, font_texture);
         glGenTextures(1, &color);
         glBindTexture(GL_TEXTURE_2D, color);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kWidth, kHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
@@ -61,10 +63,10 @@ struct GlHost
         return glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
     }
 
-    void render(const boxshelf::app::SceneInput &input)
+    void render(boxshelf::app::ShelfScreen &screen, double now)
     {
         canvas.begin(&renderer.batch(), &font, font_texture);
-        boxshelf::app::draw_scene(canvas, input);
+        screen.draw(canvas, now, {"ter., 10 de nov.", "13:15"});
         renderer.begin();
         canvas.submit(renderer);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -87,6 +89,74 @@ struct GlHost
         return std::fclose(f) == 0;
     }
 };
+
+// Boxshelf's mock.js titles (made up), on the shelves a PS5 fills.
+boxshelf::app::ShelfModel demo_library(bool with_empty)
+{
+    using boxshelf::data::Game;
+    using boxshelf::data::System;
+    struct Seed
+    {
+        System system;
+        std::vector<const char *> titles;
+        const char *ext;
+    };
+    const std::vector<Seed> seeds = {
+        {System::gc, {"Aether Drift", "Bramblewood Tales", "Cinder Circuit", "Coral Kingdom", "Echo Hollow", "Ferrous Fist",
+                      "Gale Riders", "Kettle Knight", "Lumen Isle", "Moonmallow", "Orbit Odyssey", "Sky Harbor", "Tidewalker"}, "rvz"},
+        {System::wii, {"Bubble Bay Bowling", "Clockwork Carnival", "Felt Friends", "Jumble Jam", "Paper Pilots",
+                       "Snowglobe Party", "Woolly Wonders"}, "wbfs"},
+        {System::wiiu, {"Canopy Cup", "Glimmer Gorge", "Hollow Harbor Heroes", "Pixel Plaza", "Sunfield Saga", "Tumble Town"}, "wua"},
+        {System::sw, {"Astra Vanguard", "Driftlight", "Ember Hollow", "Kitebound", "Mosslight", "Riftrunners", "Tanuki Trail"}, ""},
+        {System::ps2, {"Ashen Blade", "Dusk Legion", "Gridlock GP", "Nova Ronin", "Shardfall"}, "chd"},
+        {System::n3ds, {"Pocket Pilots", "Bramble Quest", "Starfold", "Chime Island"}, "3ds"},
+        {System::psx, {"Crystal Cavern", "Neon Drift", "Polygon Knights"}, ""},
+    };
+    std::vector<Game> games;
+    for (const auto &s : seeds)
+        for (const char *t : s.titles)
+        {
+            Game g;
+            g.system = s.system;
+            g.title = t;
+            g.folder = !*s.ext;
+            g.path = std::string("/mnt/usb0/Emulation/roms/") + std::string(boxshelf::data::style(s.system).key) + "/" + t +
+                     (*s.ext ? std::string(".") + s.ext : "");
+            g.id = boxshelf::data::make_game_id(s.system, g.path);
+            g.app = std::string(boxshelf::data::emulator_app(s.system));
+            games.push_back(g);
+        }
+    for (const char *t : {"Iron Meridian", "Lanternfall", "Saltwind"})
+    {
+        Game g;
+        g.system = System::ps5;
+        g.title = t;
+        g.app = "PPSA0" + std::to_string(1000 + games.size());
+        g.path = "/appdb/" + g.app;
+        g.id = boxshelf::data::make_game_id(System::ps5, g.path);
+        games.push_back(g);
+    }
+    std::vector<boxshelf::app::Shelf> shelves;
+    for (const auto &s : boxshelf::data::build_shelves(games))
+    {
+        if (s.system == System::home)
+            continue;
+        if (!with_empty && s.games.empty())
+            continue;
+        shelves.push_back(boxshelf::app::prepare_shelf(s, true));
+    }
+    boxshelf::app::ShelfModel model;
+    model.set(std::move(shelves));
+    return model;
+}
+
+int shelf_of(const boxshelf::app::ShelfModel &m, boxshelf::data::System s)
+{
+    for (int i = 0; i < m.shelf_count(); ++i)
+        if (m.shelf(i).system == s)
+            return i;
+    return 0;
+}
 } // namespace
 
 namespace boxshelf
@@ -105,20 +175,58 @@ int main(int argc, char **argv)
         return 2;
     }
     const std::string mode = argv[2];
-    boxshelf::app::SceneInput input;
-    if (mode == "empty")
-        input.time = 0.0;
-    else
-    {
-        std::fprintf(stderr, "unknown preview mode: %s\n", mode.c_str());
-        return 2;
-    }
     static GlHost host;
     if (!host.init())
     {
         std::fprintf(stderr, "no GL context or renderer (is Mesa EGL installed?)\n");
         return 4;
     }
-    host.render(input);
+    using boxshelf::data::System;
+    boxshelf::app::ShelfScreen screen;
+    if (mode == "loading")
+    {
+        screen.set_status("Looking through your game folders");
+        host.render(screen, 5.0);
+        return host.write_ppm(argv[1]) ? 0 : 3;
+    }
+    auto model = demo_library(mode == "empty-shelf");
+    // Modes: the shelf a case is chosen on and how far along it; "anim" is caught mid-slide.
+    struct Shot
+    {
+        const char *name;
+        System system;
+        int select;
+    };
+    const Shot shots[] = {{"gc", System::gc, 5},    {"gc-first", System::gc, 0}, {"n3ds", System::n3ds, 2},
+                          {"sw", System::sw, 4},    {"ps2", System::ps2, 3},     {"psx", System::psx, 2},
+                          {"wii", System::wii, 3},  {"wiiu", System::wiiu, 2},   {"ps5", System::ps5, 1},
+                          {"anim", System::gc, 4},  {"empty-shelf", System::nds, 0}};
+    const Shot *shot = nullptr;
+    for (const auto &s : shots)
+        if (mode == s.name)
+            shot = &s;
+    if (!shot)
+    {
+        std::fprintf(stderr, "unknown preview mode: %s\n", mode.c_str());
+        return 2;
+    }
+    screen.set_library(std::move(model), 0.0);
+    auto &m = screen.model();
+    while (m.current() != shelf_of(m, shot->system))
+        m.switch_shelf(1);
+    m.go(shot->select);
+    double now = 5.0;
+    screen.settle(now);
+    if (mode == "anim")
+    {
+        // one step right, caught 0.06 s into the 0.55 s slide
+        hui::InputFrame in;
+        in.nav = hui::Direction::right;
+        screen.input(in, now, 0.016f);
+        now += 0.06;
+    }
+    else
+        now += 1.7; // the halo's breath at full strength
+    host.render(screen, now);
     return host.write_ppm(argv[1]) ? 0 : 3;
 }
