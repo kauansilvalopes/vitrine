@@ -467,6 +467,7 @@ void ShelfScreen::draw_backdrop(DrawList &list, double now)
     const float e = t * t * (3.0f - 2.0f * t);
     wash(bg_prev_, 1.0f);
     wash(bg_now_, e);
+    draw_spectrum_fx(list, now);
     // .vignette: radial-gradient(ellipse 80% 70% at 50% 42%, transparent 35%, rgba(0,0,0,.5) 100%),
     //            linear-gradient(to bottom, rgba(0,0,0,.25), transparent 20%, transparent 62%, rgba(0,0,0,.5))
     const Color black = rgb(0x000000);
@@ -474,6 +475,69 @@ void ShelfScreen::draw_backdrop(DrawList &list, double now)
                          0.35f, 1.0f);
     list.gradient_rect({0, 0, W, H * .2f}, 0, black.with_alpha(.25f), black.with_alpha(0));
     list.gradient_rect({0, H * .62f, W, H * .38f}, 0, black.with_alpha(0), black.with_alpha(.5f));
+}
+
+// themefx.js spectrum(): three slow ribbons of light and drifting dust in the console's colour, over the wash and
+// under the vignette. Canvas 'lighter' compositing becomes plain blending here (the alphas are small).
+void ShelfScreen::draw_spectrum_fx(DrawList &list, double now)
+{
+    const float target = bg_now_.shelf_hue;
+    const float dt = fx_last_ < 0.0 ? 0.0f : static_cast<float>(std::clamp(now - fx_last_, 0.0, 0.25));
+    fx_last_ = now;
+    if (fx_hue_ < 0.0f)
+        fx_hue_ = target;
+    fx_hue_ += (target - fx_hue_) * std::min(1.0f, dt * 1.5f);
+    const float hue = fx_hue_, t = static_cast<float>(std::fmod(now, 10000.0));
+    constexpr int kStep = 8; // the path takes a point every 8 px
+    for (int k = 0; k < 3; ++k)
+    {
+        const float yb = H * (.2f + static_cast<float>(k) * .14f), hh = hue + static_cast<float>(k - 1) * 28.0f;
+        std::vector<float> ys;
+        for (int x = 0; x <= static_cast<int>(W); x += kStep)
+        {
+            const float u = static_cast<float>(x) / W;
+            ys.push_back(yb + std::sin(u * 5.0f + t * (.16f + static_cast<float>(k) * .05f) + static_cast<float>(k) * 2.0f) * H * .06f +
+                         std::sin(u * 11.0f - t * .21f + static_cast<float>(k)) * H * .02f);
+        }
+        // the two wide strokes as bands (top edge then bottom edge), the hairline as segments
+        auto band = [&](float width, Color c)
+        {
+            std::vector<float> xy;
+            xy.reserve(ys.size() * 4);
+            for (std::size_t i = 0; i < ys.size(); ++i)
+                xy.insert(xy.end(), {static_cast<float>(i * kStep), ys[i] - width * .5f});
+            for (std::size_t i = ys.size(); i-- > 0;)
+                xy.insert(xy.end(), {static_cast<float>(i * kStep), ys[i] + width * .5f});
+            list.polygon(xy.data(), static_cast<int>(xy.size() / 2), c);
+        };
+        band(H * .09f, hsl(hh, 90, 62, .06f));
+        band(H * .012f, hsl(hh, 95, 75, .12f));
+        const Color hair = hsl(hh + 10, 100, 88, .18f);
+        const float lw = std::max(1.0f, H * .0025f);
+        for (std::size_t i = 1; i < ys.size(); ++i)
+            list.line(static_cast<float>((i - 1) * kStep), ys[i - 1], static_cast<float>(i * kStep), ys[i], lw, hair);
+    }
+    // dust: 80 motes rising at .004-.016 screens a second, twinkling; a mote that leaves the top comes back at the
+    // bottom somewhere else (seeded per lap, so every frame agrees without keeping state)
+    auto rnd = [](std::uint32_t a)
+    {
+        a += 0x6D2B79F5u;
+        std::uint32_t r = a;
+        r = (r ^ (r >> 15)) * (r | 1u);
+        r ^= r + (r ^ (r >> 7)) * (r | 61u);
+        return static_cast<float>(r ^ (r >> 14)) / 4294967296.0f;
+    };
+    for (std::uint32_t i = 0; i < 80; ++i)
+    {
+        const float y0 = rnd(i * 7 + 1), sz = .4f + rnd(i * 7 + 2) * 1.2f, v = .004f + rnd(i * 7 + 3) * .012f,
+                    p = rnd(i * 7 + 4) * 6.28f;
+        const float risen = (1.02f - y0) + v * t; // as if it had started at the bottom (1.02); a lap is 1.04 screens
+        const float lap = std::floor(risen / 1.04f);
+        const float y = 1.02f - (risen - lap * 1.04f);
+        const float x = lap == 0.0f ? rnd(i * 7 + 5) : rnd(i * 7 + 5 + static_cast<std::uint32_t>(lap) * 131u);
+        const float a = .25f + .25f * std::sin(t * 1.3f + p);
+        list.circle(x * W + std::sin(t * .4f + p) * 6.0f, y * H, sz * 2.2f, hsl(hue + 20, 90, 80, a * .7f));
+    }
 }
 
 void ShelfScreen::draw_floor_and_halo(DrawList &list, double now)

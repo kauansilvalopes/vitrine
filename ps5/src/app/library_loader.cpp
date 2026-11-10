@@ -108,6 +108,52 @@ void LibraryLoader::work()
             index.add_boxshelf_covers(names);
         }
     }
+    // Folder names often lost their apostrophes ("Tony Hawks Pro Skater", "Disneys Tarzan"): when the libretro index
+    // the art fetcher keeps has the same game under the same words, its proper name is shown instead.
+    {
+        std::vector<std::pair<std::string, std::vector<std::string>>> indexes;
+        int renamed = 0;
+        for (auto &g : games)
+        {
+            const std::string key(style(g.system).key);
+            if (data::libretro_system(key).empty())
+                continue;
+            auto found = std::find_if(indexes.begin(), indexes.end(), [&](const auto &p) { return p.first == key; });
+            if (found == indexes.end())
+            {
+                std::vector<std::string> names;
+                if (FILE *f = std::fopen((storage_root() + "/libretro-" + key + ".txt").c_str(), "rb"))
+                {
+                    char line[512];
+                    while (std::fgets(line, sizeof line, f))
+                    {
+                        std::string n(line);
+                        while (!n.empty() && (n.back() == '\n' || n.back() == '\r'))
+                            n.pop_back();
+                        if (!n.empty())
+                            names.push_back(std::move(n));
+                    }
+                    std::fclose(f);
+                }
+                indexes.emplace_back(key, std::move(names));
+                found = indexes.end() - 1;
+            }
+            if (found->second.empty())
+                continue;
+            const std::string hit = data::libretro_match(found->second, g.title, g.region);
+            if (hit.empty())
+                continue;
+            // only the apostrophes are taken: libretro's file names also turn ':' into ' - ' and '&' into '_'
+            const std::string proper = data::libretro_title(hit);
+            std::string bare;
+            for (char c : proper)
+                if (c != '\'')
+                    bare += c;
+            if (proper != g.title && bare == g.title)
+                g.title = proper, ++renamed;
+        }
+        hui::sys::log("[BOXSHELF] library: %d titles given their proper names", renamed);
+    }
     int covered = 0;
     for (auto &g : games)
     {

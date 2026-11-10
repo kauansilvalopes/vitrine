@@ -70,6 +70,7 @@ class ShelfScreen
     float shelf_hue() const;
 
     void draw_backdrop(hui::gfx::DrawList &list, double now);
+    void draw_spectrum_fx(hui::gfx::DrawList &list, double now);
     void draw_floor_and_halo(hui::gfx::DrawList &list, double now);
     void draw_cases(GlCanvas &canvas, double now);
     void draw_top_bar(hui::gfx::DrawList &list, double now, const Clock &clock);
@@ -94,6 +95,9 @@ class ShelfScreen
     double bg_due_ = -1.0; // updateBg's 120 ms timer
     double info_since_ = -10.0; // the title strip's rise
     double landed_at_ = -10.0;
+    // themefx.js: the moving layer's colour eases toward the shelf's (hue += (hueT - hue) * min(1, dt * 1.5))
+    float fx_hue_ = -1.0f;
+    double fx_last_ = -1.0;
     // Triangle: flip() turns the selected case round (.box transition: transform .75s cubic-bezier(.3,.95,.25,1)).
     bool flipped_ = false;
     Glide flip_{0.0f, 0.0f, -1.0, .75f, Bezier{.3f, .95f, .25f, 1.0f}, true};
