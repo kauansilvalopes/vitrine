@@ -20,7 +20,8 @@ struct CoverRequest
     data::System system = data::System::count;
     bool square = false; // an icon: composed into the style (covers.js iconFront)
     int width = 0, height = 0;
-    std::string fallback; // a square icon tried when `path` cannot be read
+    std::string fallback; // tried when `path` cannot be read
+    bool fallback_square = false;
 };
 
 struct CoverPixels

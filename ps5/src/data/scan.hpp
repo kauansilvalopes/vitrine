@@ -47,7 +47,8 @@ struct Game
     // Box art already on the console (see data/cover_index.hpp); empty when none.
     std::string cover_front, cover_back, cover_spine;
     bool cover_square = false; // an icon, not box art: composed into the system's cover style
-    std::string cover_fallback; // a square icon to compose when cover_front cannot be read
+    std::string cover_fallback; // tried when cover_front cannot be read
+    bool fallback_square = false; // the fallback is a square icon (cropped to fill), not box art
 };
 
 // ---- rules ----

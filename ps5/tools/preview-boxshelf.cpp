@@ -16,6 +16,7 @@
 
 #include "data/cover_index.hpp"
 
+#include <dirent.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -213,6 +214,20 @@ boxshelf::app::ShelfModel real_library(const std::string &dir)
     for (const auto &e : eden)
         if (e.name.size() > 5 && e.name.compare(e.name.size() - 5, 5, ".name") == 0)
             index.add_eden_name(e.name.substr(0, e.name.size() - 5), slurp(dir + "/eden/" + e.name));
+    // Boxshelf's own covers as the console would list them (a copy of .local/boxshelf-covers under the console dir)
+    {
+        std::vector<std::string> own;
+        const char *root = std::getenv("BOXSHELF_CONSOLE_DIR");
+        if (root)
+            if (DIR *d = opendir((std::string(root) + "/data/boxshelf/covers").c_str()))
+            {
+                while (dirent *e = readdir(d))
+                    if (e->d_name[0] != '.')
+                        own.emplace_back(e->d_name);
+                closedir(d);
+            }
+        index.add_boxshelf_covers(own);
+    }
     for (auto &g : games)
         index.resolve(g);
     std::vector<std::string> installed;

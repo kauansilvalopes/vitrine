@@ -242,7 +242,7 @@ void CoverLoader::work()
         {
             used = req.fallback;
             got = elf_get(fs_url("/api/fs/download?path=", req.fallback), bytes, 12u << 20) && !bytes.empty();
-            req.square = true;
+            req.square = req.fallback_square;
         }
         int ix, iy, iw, ih;
         frame_inner(req.system, req.width, req.height, ix, iy, iw, ih);

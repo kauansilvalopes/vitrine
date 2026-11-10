@@ -444,7 +444,8 @@ void ShelfScreen::update_covers(GlCanvas &canvas)
                 std::find(art_missing_.begin(), art_missing_.end(), g.id) != art_missing_.end())
                 continue;
             const auto spec = data::cover_spec(data::style(it.system), 360);
-            wish.push_back({g.id, g.cover_front, it.system, g.cover_square, spec.width, spec.height, g.cover_fallback});
+            wish.push_back({g.id, g.cover_front, it.system, g.cover_square, spec.width, spec.height, g.cover_fallback,
+                            g.fallback_square});
             sig += g.id;
             if (d == 0)
                 break;

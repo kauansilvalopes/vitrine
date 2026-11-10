@@ -267,6 +267,20 @@ static void test_cover_index()
     ps5.app = "PPSA01234";
     CHECK(ix.resolve(ps5) && ps5.cover_front == "/user/appmeta/PPSA01234/icon0.png" && ps5.cover_square);
 
+    // Boxshelf's own covers win; the emulator's art becomes the fallback
+    CoverIndex own = ix;
+    Game p1own = game(System::psx, "/mnt/usb0/Emulation/roms/psx/Racer Two (CHD)", "Racer Two", true);
+    p1own.id = "psx:0000abcd";
+    own.add_boxshelf_covers({"psx_0000abcd.png", "notes.txt", "x.jpg"});
+    CHECK(own.resolve(p1own) && p1own.cover_front == "/data/boxshelf/covers/psx_0000abcd.png" && !p1own.cover_square);
+    CHECK(p1own.cover_fallback == "/data/SwanStationPS5/covers/default/SLUS-01234.jpg" && !p1own.fallback_square);
+    Game ps5own = game(System::ps5, "/appdb/PPSA07777", "Own Art");
+    ps5own.app = "PPSA07777";
+    ps5own.id = "ps5:00000001";
+    own.add_boxshelf_covers({"ps5_00000001.jpg"});
+    CHECK(own.resolve(ps5own) && ps5own.cover_fallback == "/user/appmeta/PPSA07777/icon0.png" && ps5own.fallback_square);
+    CHECK(cover_key("ps2:1a2b3c4d") == "ps2_1a2b3c4d");
+
     Game none = game(System::ps2, "/mnt/usb0/Emulation/roms/ps2/unknown.iso", "unknown");
     CHECK(!ix.resolve(none) && none.cover_front.empty());
 

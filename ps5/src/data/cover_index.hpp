@@ -35,12 +35,16 @@ class CoverIndex
     void add_porpoise_cache(std::string_view tsv);
     void add_eden_name(std::string_view hash, std::string_view title);
     void add_ecam_library(std::string_view json);
+    // Boxshelf's own covers (tools/boxshelf_covers.py: libretro / LaunchBox / GameTDB, the sources Boxshelf uses),
+    // /data/boxshelf/covers/<game id with ':' as '_'>.png|jpg: they win over the emulators' art.
+    void add_boxshelf_covers(const std::vector<std::string> &file_names);
 
     // Fills game.cover_* / disc_id / region, a better title where the emulator knows one (PS2 serial titles,
     // Porpoise for names that say nothing) and GameCube vs Wii from the disc id. Returns true if a cover was found.
     bool resolve(Game &game) const;
 
   private:
+    bool resolve_emulator(Game &game) const;
     std::unordered_map<std::string, std::string> swan_serial_; // folder name (lower) -> serial
     std::unordered_map<std::string, std::string> ps2_serial_;  // file name (lower) -> serial
     std::unordered_map<std::string, std::string> ps2_title_;   // serial -> title
@@ -55,8 +59,11 @@ class CoverIndex
         std::string title_id, game_id, name;
     };
     std::unordered_map<std::string, Ecam> ecam_; // file name (lower) -> entry
+    std::unordered_map<std::string, std::string> own_; // game key -> file name in /data/boxshelf/covers
 };
 
+// The file name (without extension) a game's own cover has in /data/boxshelf/covers: its id with ':' as '_'.
+std::string cover_key(const std::string &game_id);
 // Last path component, lower-cased ASCII.
 std::string leaf_key(std::string_view path);
 // Folder of a one-folder-per-game entry inside a cache path ("/x/games/<Folder>/<file>" -> "<folder>"), lower-cased.

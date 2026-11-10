@@ -141,7 +141,46 @@ void CoverIndex::add_ecam_library(std::string_view json)
     cJSON_Delete(root);
 }
 
+void CoverIndex::add_boxshelf_covers(const std::vector<std::string> &file_names)
+{
+    for (const auto &f : file_names)
+    {
+        const auto dot = f.rfind('.');
+        if (dot == std::string::npos || dot == 0)
+            continue;
+        const std::string ext = lower(f.substr(dot + 1));
+        if (ext == "png" || ext == "jpg" || ext == "jpeg")
+            own_[f.substr(0, dot)] = f;
+    }
+}
+
+std::string cover_key(const std::string &game_id)
+{
+    std::string k = game_id;
+    for (char &c : k)
+        if (c == ':')
+            c = '_';
+    return k;
+}
+
 bool CoverIndex::resolve(Game &g) const
+{
+    const bool found = resolve_emulator(g);
+    const auto own = own_.find(cover_key(g.id));
+    if (own == own_.end())
+        return found;
+    // Boxshelf's own art first; what the emulator had becomes the fallback (a square icon is composed)
+    if (!g.cover_front.empty())
+    {
+        g.cover_fallback = g.cover_front;
+        g.fallback_square = g.cover_square;
+    }
+    g.cover_front = "/data/boxshelf/covers/" + own->second;
+    g.cover_square = false;
+    return true;
+}
+
+bool CoverIndex::resolve_emulator(Game &g) const
 {
     const std::string leaf = leaf_key(g.path);
     switch (g.system)
@@ -215,6 +254,7 @@ bool CoverIndex::resolve(Game &g) const
         {
             g.cover_front = "/data/ps5cemu/covers/boxart/3ds/" + e.game_id + ".tga";
             g.cover_fallback = icon;
+            g.fallback_square = !icon.empty();
         }
         else if (!icon.empty() && g.system == System::n3ds)
         {

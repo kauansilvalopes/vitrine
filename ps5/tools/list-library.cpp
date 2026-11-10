@@ -68,12 +68,13 @@ int main(int argc, char **argv)
         return 0;
     }
     const bool covers_only = argc == 3 && std::string(argv[1]) == "--covers";
-    if (argc != 2 && !covers_only)
+    const bool json_only = argc == 3 && std::string(argv[1]) == "--json";
+    if (argc != 2 && !covers_only && !json_only)
     {
-        std::fprintf(stderr, "usage: %s [--roots|--covers] <listings dir>\n", argv[0]);
+        std::fprintf(stderr, "usage: %s [--roots|--covers|--json] <listings dir>\n", argv[0]);
         return 2;
     }
-    const std::string dir = argv[covers_only ? 2 : 1];
+    const std::string dir = argv[(covers_only || json_only) ? 2 : 1];
     std::vector<Game> games = games_from_appdb(read(dir + "/appdb.json"));
     int listed = 0;
     for (const auto &root : all_roots(dir))
@@ -85,7 +86,7 @@ int main(int argc, char **argv)
         for (auto &g : scan_listing(root, entries))
             games.push_back(std::move(g));
     }
-    if (!covers_only)
+    if (!covers_only && !json_only)
         std::printf("roots listed: %d\n", listed);
 
     // Cover index (the same files the console app reads) and the cover folders' listings, to tell which exist.
@@ -118,6 +119,36 @@ int main(int argc, char **argv)
     int total = 0, with_cover = 0;
     for (auto &g : games)
         index.resolve(g);
+    if (json_only)
+    {
+        // the library for tools/boxshelf_covers.py: one object per game
+        auto esc = [](const std::string &s)
+        {
+            std::string o;
+            for (char c : s)
+            {
+                if (c == '"' || c == '\\')
+                    o += '\\';
+                if (static_cast<unsigned char>(c) < 0x20)
+                    continue;
+                o += c;
+            }
+            return o;
+        };
+        std::printf("[\n");
+        for (std::size_t i = 0; i < games.size(); ++i)
+        {
+            const auto &g = games[i];
+            std::printf("{\"id\":\"%s\",\"system\":\"%s\",\"title\":\"%s\",\"path\":\"%s\",\"disc_id\":\"%s\",\"region\":\"%s\","
+                        "\"app\":\"%s\",\"has_cover\":%s}%s\n",
+                        esc(g.id).c_str(), std::string(style(g.system).key).c_str(), esc(g.title).c_str(),
+                        esc(g.path).c_str(), esc(g.disc_id).c_str(), esc(g.region).c_str(), esc(g.app).c_str(),
+                        (!g.cover_front.empty() && exists(g.cover_front)) ? "true" : "false",
+                        i + 1 < games.size() ? "," : "");
+        }
+        std::printf("]\n");
+        return 0;
+    }
     if (covers_only)
     {
         for (const auto &g : games)

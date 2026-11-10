@@ -93,6 +93,18 @@ void LibraryLoader::work()
                     index.add_eden_name(hash, download(("/data/prosperoeden/covers/" + e.name).c_str()));
                 }
     }
+    {
+        // Boxshelf's own covers, put there by tools/boxshelf_covers.py + upload-covers.py
+        std::vector<DirEntry> own;
+        if (elf_get(fs_url("/api/fs/list?path=", "/data/boxshelf/covers"), body) && parse_fs_list(body, own))
+        {
+            std::vector<std::string> names;
+            for (const auto &e : own)
+                if (!e.dir)
+                    names.push_back(e.name);
+            index.add_boxshelf_covers(names);
+        }
+    }
     int covered = 0;
     for (auto &g : games)
         covered += index.resolve(g);
