@@ -344,3 +344,29 @@ the geometry already matched; the missing part was the finish. Now drawn in the 
   "opening side" look (it faces away anyway).
 
 **Next step:** owner deploys and sends screenshots; then LaunchBox on the console (PS5 boxes), floor strips, backs.
+
+## 2026-11-10 (evening) — owner's shelf decisions, Flip, Play
+
+**Owner: "no museum; do the rest. Flip doesn't work. Drop Surprise me; emulator apps show on every console tab:
+rename Custom to Others and put the apps there."**
+- Museum (P5) dropped by the owner.
+- Console shelves now hold only the games (Deviation from app.js prepare(), owner's decision): no "Surprise me", no
+  "Open <emulator>" tile; an empty console shelf keeps "Add games". The Custom shelf is now **Others** ("Apps &
+  ports", spine label APP) and holds every PPSA9xxxx title: ports, emulators, tools (Estante, Store, ...).
+- **△ Flip** (tap; hold stays for favourite, not done yet): the selected case turns 180° (.75 s,
+  cubic-bezier(.3,.95,.25,1)); ○ turns it back; moving resets it. The back is the emulator cache's own back art
+  when there is one (PS2 / GC / Wii), else covers.js `drawBack()` rendered into the back target: gradient, system
+  band, title (2 lines), four "screenshots" (drawScene reduced to sky, moon and hills: the other scene kinds are not
+  ported — Deviation), info rows (Region / File / Emulator / Serial; Type / Title ID for apps).
+- **✕ Play**: Estante's route (`src/app/launcher.*`, own thread): /api/state first (another game open → message);
+  Porpoise / PS5-ECAM / SwanStation / ProsperoEden start straight into the game through Porpoise's
+  home-launcher.elf patched and sent to the ELF loader (9021) — PS1 folder → its .cue, Switch folder → biggest
+  .nsp/.xci; PS5SX2 gets `/data/PCSX2/logs/disc-launch.txt` over FTP then opens; anything else (and any failure)
+  `/launch?titleId=`. The console confirms within ~6 s. Messages in Boxshelf's `.toast` (white pill, turning ring).
+  Note for the owner: Play sends Porpoise's launcher to the ELF loader, as Estante does.
+- **Verified on:** unit tests (data 224/0, shelf 54/0), PC preview (`gc-flip`, `gc-turn`, `real-ps2-10-flip`,
+  `n3ds-flip`, `real-custom-0`, `gc-play`: on the PC the launcher answers "needs the console"), `make app` builds.
+  **Nothing of this has run on the console yet.**
+
+**Next:** owner tests on the console; then □ Details, Menu / sort panel, settings, LaunchBox on the console for PS5
+boxes, hold-△ favourites, recently played, pt-BR / es.
