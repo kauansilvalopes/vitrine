@@ -193,8 +193,11 @@ static void test_appdb_and_shelves()
         all.push_back(g);
     all.push_back(all.back()); // the same path twice (two roots pointing at one folder)
     const auto shelves = build_shelves(all);
-    // Order: Home, then the console order of main/systems.js, Others, Media last.
-    CHECK(!shelves.empty() && shelves.front().system == System::home);
+    // Order: the console order of main/systems.js, Others, Media last; only shelves with games (no empty Home, no
+    // GameCube tab just because Porpoise is installed)
+    CHECK(!shelves.empty() && shelves.front().system == System::ps2);
+    for (const auto &s : shelves)
+        CHECK(!s.games.empty() && s.system != System::home && s.system != System::gc);
     CHECK(!shelves.empty() && shelves.back().system == System::custom); // no streaming app here: Others is last
     const Shelf *p2 = nullptr;
     bool has_psp = false, has_ps4 = false;

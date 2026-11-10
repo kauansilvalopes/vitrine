@@ -98,7 +98,7 @@ struct Shelf
     System system;
     std::vector<Game> games; // sorted by title
 };
-// Merges games (same path once), groups them per system in shelf order and sorts each shelf by title. Shelves with
-// no game are kept only for systems a PS5 emulator runs (Boxshelf shows an "Add games" tile on them).
+// Merges games (same path once), groups them per system in shelf order and sorts each shelf by title. A shelf with
+// no game is left out, whatever emulators are installed.
 std::vector<Shelf> build_shelves(const std::vector<Game> &games);
 } // namespace boxshelf::data

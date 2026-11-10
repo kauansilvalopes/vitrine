@@ -570,8 +570,9 @@ std::vector<Shelf> build_shelves(const std::vector<Game> &games)
     std::vector<Shelf> kept;
     for (auto &s : shelves)
     {
-        const bool always = s.system == System::home || s.system == System::ps5 || !emulator_app(s.system).empty();
-        if (always || !s.games.empty())
+        // only the shelves that have games: a console with its emulator installed but no game shows no tab
+        // (owner, 2026-11-10; Boxshelf keeps those with an "Add games" tile)
+        if (!s.games.empty())
             kept.push_back(std::move(s));
     }
     return kept;

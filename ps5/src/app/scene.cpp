@@ -1237,11 +1237,7 @@ void ShelfScreen::draw_top_bar(DrawList &list, double now, const Clock &clock)
             list.bordered_rect({cx - 11.0f, cy - 6.0f, 22.0f, 12.0f}, 6.0f, Color{0, 0, 0, 0}, 1.4f, kInkDim);
             list.circle(cx - 5.0f, cy, 1.4f, kInkDim);
             list.circle(cx + 5.0f, cy, 1.4f, kInkDim);
-            const float sx = cx - 11.0f - 12.0f - 24.0f - 12.0f, sy = cy;
-            list.rounded_rect({sx, sy - 3.0f, 4.0f, 6.0f}, 1.0f, kInkDim);
-            list.triangle({sx + 1.0f, sy - 6.0f, 8.0f, 12.0f}, kInkDim, 0.0f, -1.5708f);
-            list.arc(sx + 6.0f, sy, 6.0f, 1.4f, 0.6f, 1.9f, kInkDim);
-            list.arc(sx + 6.0f, sy, 10.0f, 1.4f, 0.5f, 2.1f, kInkDim);
+            // (Boxshelf's sound button comes back with the sounds: the app has no audio yet)
         }
         y += row + 10.0f;
         // .counter: 14px 500 tabular, .06em; "<b>sel+1</b> / n"
@@ -1319,15 +1315,13 @@ void ShelfScreen::draw_hints(DrawList &list)
     };
     const Item *it = model_.item();
     const char *play = !it || it->kind == ItemKind::setup ? tr("Set up") : tr("Play");
+    // Only what works today (owner, 2026-11-10): Details, Inspect, Shuffle, Settings / Museum and the held actions
+    // (favourite, sort) come back with their features.
     const Hint hints[] = {
         {{"L2", "R2"}, tr("System"), nullptr},
-        {{"tri", nullptr}, tr("Flip"), "\xe2\x99\xa5"},
-        {{"sq", nullptr}, tr("Details"), nullptr},
+        {{"tri", nullptr}, tr("Flip"), nullptr},
         {{"x", nullptr}, play, nullptr},
-        {{"R3", nullptr}, tr("Inspect"), nullptr},
-        {{"L3", nullptr}, tr("Shuffle"), nullptr},
-        {{"share", nullptr}, tr("Settings"), tr("Museum")},
-        {{"menu", nullptr}, tr("Menu"), tr("Sort")},
+        {{"menu", nullptr}, tr("Menu"), nullptr},
     };
     const float font = 12.0f, key_h = 18.0f, hint_h = 28.0f, pad_x = 10.0f, gap_in = 7.0f, gap = 6.0f;
     auto key_width = [&](const char *k)

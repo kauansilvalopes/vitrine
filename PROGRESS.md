@@ -477,3 +477,17 @@ titleName "Vitrine", contentVersion 01.002.002, icon0.png byte-identical to sce_
 (checked on the PC build output). Release: tag ps5-v0.2.2, "Vitrine 0.2.2", marked Latest, `PPSA99850.zip`
 (PPSA99850/ at its root), SHA-256 ea6f6e7d81794485f07e644469b8f1310aabab468885887d87dae0f68e861fea. Not run on the
 console.
+
+## 2026-11-10 — hotfix ps5-v0.2.3
+
+Owner: "a shelf the user has no games for must not show (no GameCube games, no GameCube tab)" and "buttons without a
+function yet must not show (R3 inspect, settings, square details) until they are done".
+- `build_shelves` keeps only shelves with games: no empty console tab (even with its emulator installed), no empty
+  PS5 or Home tab (Deviation from Boxshelf's "Add games" tiles, owner's decision). Test updated (data 232/0).
+- Hint bar: only L2/R2 System, △ Flip, ✕ Play, ☰ Menu. Gone until their features exist: □ Details, R3 Inspect,
+  L3 Shuffle, Settings / Museum, the held favourite (△) and sort (☰). The top bar's sound button is gone too (no
+  audio yet); the controller indicator stays.
+- contentVersion 01.002.003. Verified: unit tests (data 232/0, shelf 64/0), PC preview with the owner's real
+  library (`real-gc`, `real-sw-4` in pt: the empty DS tab is gone, four hints), `make app`. Not run on the console.
+- Release: tag ps5-v0.2.3, "Vitrine 0.2.3", Latest, `PPSA99850.zip`, SHA-256
+  da1e39ef78c244e90b8bdbdc84d2013f7d310de8ad9fe18007b84cc9147d681a.
