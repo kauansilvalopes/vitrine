@@ -88,13 +88,17 @@ layout(location = 2) in vec3 a_normal;
 uniform mat4 u_mvp;
 uniform mat4 u_model;
 uniform float u_flip;
+uniform vec4 u_uvrect; // u0, v0, u1, v1: the part of the texture this face shows
 out vec2 v_uv;
+out vec2 v_face; // 0..1 across the face, before u_uvrect
 out vec3 v_normal;
 out float v_y;
 void main()
 {
     vec4 world = u_model * vec4(a_pos, 1.0);
-    v_uv = vec2(a_uv.x, u_flip > 0.5 ? 1.0 - a_uv.y : a_uv.y);
+    v_face = a_uv;
+    vec2 uv = vec2(a_uv.x, u_flip > 0.5 ? 1.0 - a_uv.y : a_uv.y);
+    v_uv = mix(u_uvrect.xy, u_uvrect.zw, uv);
     v_normal = mat3(u_model) * a_normal;
     v_y = world.y;
     gl_Position = u_mvp * vec4(a_pos, 1.0);
@@ -103,9 +107,16 @@ void main()
 
 const char *fragment_source = R"(
 in vec2 v_uv;
+in vec2 v_face;
 in vec3 v_normal;
 in float v_y;
 uniform sampler2D u_tex;
+uniform vec4 u_glare;  // x: band centre across the face (0..1), y: strength, z: face height / width, w: sheen centre
+uniform vec2 u_round;  // x: corner radius in face widths (0: square); y: which corners (0 all, 1 right only, -1 left)
+uniform vec4 u_spine;  // x: 1 on a spine face, y: the band's share of the height (0: none), z: 1 on the right side
+uniform vec4 u_band;   // the band tile in the texture: u at its left, v at its top, u at its right, v at its bottom
+uniform vec4 u_shade;  // spine film (setup.css .f-left::after): black alpha at the back, white alpha, black at the front, white stop
+uniform float u_film;  // strength of the front's ::after film (1 selected, .55 the others)
 uniform vec4 u_color;
 uniform int u_textured;
 uniform float u_ambient;
@@ -117,7 +128,32 @@ uniform float u_spin;
 out vec4 frag;
 void main()
 {
-    vec4 base = u_textured != 0 ? texture(u_tex, v_uv) : u_color;
+    vec2 uv = v_uv;
+    // style.css .spine-band: the top 9 % of the spine, its label written across the spine (not along it), so it is a
+    // tile of its own in the atlas, read transposed. Across the face: v_face.y 0 is the front edge on the left side and
+    // the back edge on the right; both put the element's own left (back on .f-left, front on .f-right) at 1 - v_face.y.
+    if (u_spine.x > 0.5 && u_spine.y > 0.0 && v_face.x < u_spine.y)
+        uv = vec2(mix(u_band.x, u_band.z, 1.0 - v_face.y), mix(u_band.y, u_band.w, v_face.x / u_spine.y));
+    vec4 base = u_textured != 0 ? texture(u_tex, uv) : u_color;
+    if (u_spine.x > 0.5)
+    {
+        // the film, measured from the back edge: rgba(0,0,0,a0) -> rgba(255,255,255,a1) at w -> rgba(0,0,0,a2)
+        float t = u_spine.z > 0.5 ? v_face.y : 1.0 - v_face.y;
+        float f = t < u_shade.w ? t / u_shade.w : (t - u_shade.w) / (1.0 - u_shade.w);
+        float fa = t < u_shade.w ? mix(u_shade.x, u_shade.y, f) : mix(u_shade.y, u_shade.z, f);
+        float fw = t < u_shade.w ? mix(0.0, u_shade.y, f) : mix(u_shade.y, 0.0, f); // premultiplied white
+        base.rgb = base.rgb * (1.0 - fa) + vec3(fw);
+    }
+    if (u_film > 0.0)
+    {
+        // .f-front::after: linear-gradient(90deg, rgba(0,0,0,.14), transparent 10%, transparent 88%, rgba(0,0,0,.18))
+        // under linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 18%, transparent 34%)
+        float x = v_face.x, y = v_face.y;
+        float dark = x < 0.10 ? 0.14 * (1.0 - x / 0.10) : (x > 0.88 ? 0.18 * (x - 0.88) / 0.12 : 0.0);
+        float rim = y < 0.18 ? mix(0.16, 0.04, y / 0.18) : (y < 0.34 ? 0.04 * (1.0 - (y - 0.18) / 0.16) : 0.0);
+        base.rgb *= 1.0 - dark * u_film;
+        base.rgb = mix(base.rgb, vec3(1.0), rim * u_film);
+    }
     float lit = max(dot(normalize(v_normal), normalize(u_light)), 0.0);
     float shade = u_ambient + (1.0 - u_ambient) * lit;
     vec4 c = vec4(base.rgb * shade, base.a * u_color.a);
@@ -133,6 +169,41 @@ void main()
         vec2 q = v_uv - 0.5;
         float band = pow(max(cos(2.0 * (atan(q.y, q.x) + u_spin)), 0.0), 10.0);
         c.rgb += vec3(band) * u_sheen * (0.25 + length(q));
+    }
+    if (u_glare.y > 0.0)
+    {
+        // style.css .glare: linear-gradient(104deg, ...) on a layer 1.2 faces wide, slid by the case's angle. Its stops
+        // are p % of the line a 3-face layer would have (style.css comment), i.e. (p - 50 %) * (3 sin104 + h/w cos 76)
+        // face widths from the centre, measured along the gradient direction (sin 104, -cos 104) with y down.
+        float k = 3.0 * 0.97030 + 0.24192 * u_glare.z;
+        float d = ((v_face.x - u_glare.x) * 0.97030 + (v_face.y - 0.5) * u_glare.z * 0.24192) / k + 0.5;
+        float a = 0.0;
+        if (d > 0.413 && d < 0.463) a = mix(0.0, 0.07, (d - 0.413) / 0.050);
+        else if (d >= 0.463 && d < 0.497) a = mix(0.07, 0.34, (d - 0.463) / 0.034);
+        else if (d >= 0.497 && d < 0.503) a = mix(0.34, 0.30, (d - 0.497) / 0.006);
+        else if (d >= 0.503 && d < 0.533) a = mix(0.30, 0.06, (d - 0.503) / 0.030);
+        else if (d >= 0.533 && d < 0.580) a = mix(0.06, 0.0, (d - 0.533) / 0.047);
+        // the thin second line
+        if (d > 0.547 && d < 0.567) a += mix(0.0, 0.12, (d - 0.547) / 0.020);
+        else if (d >= 0.567 && d < 0.583) a += mix(0.12, 0.0, (d - 0.567) / 0.016);
+        c.rgb = mix(c.rgb, vec3(1.0), a * u_glare.y);
+    }
+    if (u_glare.w > -5.0)
+    {
+        // style.css .sheen::after: a 42 %-wide white band (100deg, skewed -14deg) crossing the face once on landing
+        float d = (v_face.x - u_glare.w) + 0.2493 * (v_face.y - 0.5) * u_glare.z;
+        float a = clamp(1.0 - abs(d) / 0.21, 0.0, 1.0); // linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent)
+        c.rgb = mix(c.rgb, vec3(1.0), 0.6 * a);
+    }
+    if (u_round.x > 0.0 && !(u_round.y > 0.5 && v_face.x < 0.5) && !(u_round.y < -0.5 && v_face.x > 0.5))
+    {
+        // rounded corners (style.css rc): distance outside the rounded rectangle, in face-width units
+        vec2 p = abs(v_face - 0.5) * vec2(1.0, u_glare.z);
+        vec2 b = vec2(0.5, 0.5 * u_glare.z) - vec2(u_round.x);
+        vec2 q = p - b;
+        float dist = length(max(q, 0.0)) - u_round.x;
+        float px = fwidth(v_face.x);
+        c.a *= clamp(0.5 - dist / max(px, 1e-4), 0.0, 1.0);
     }
     if (u_fade.y > 0.0)
     {
@@ -161,6 +232,13 @@ bool Gl3D::init() noexcept
     u_shine_ = glGetUniformLocation(program_, "u_shine");
     u_sheen_ = glGetUniformLocation(program_, "u_sheen");
     u_spin_ = glGetUniformLocation(program_, "u_spin");
+    u_uvrect_ = glGetUniformLocation(program_, "u_uvrect");
+    u_glare_ = glGetUniformLocation(program_, "u_glare");
+    u_round_ = glGetUniformLocation(program_, "u_round");
+    u_spine_ = glGetUniformLocation(program_, "u_spine");
+    u_band_ = glGetUniformLocation(program_, "u_band");
+    u_shade_ = glGetUniformLocation(program_, "u_shade");
+    u_film_ = glGetUniformLocation(program_, "u_film");
 
     std::vector<Vertex> v;
     auto quad = [&](const float p[4][3], float nx, float ny, float nz, bool reversed = false)
@@ -201,6 +279,16 @@ bool Gl3D::init() noexcept
         const int order[6] = {0, 2, 1, 0, 3, 2};
         for (int i : order)
             v.push_back({pos[i][0], pos[i][1], pos[i][2], uvs[i][0], uvs[i][1], -1, 0, 0});
+    }
+    // The right edge with the spine's mapping (setup.css .f-right.spine2 carries the band and title too): u runs
+    // top to bottom, v from the back edge to the front, so the title reads top to bottom from that side as well.
+    spine_right_first_ = static_cast<int>(v.size());
+    {
+        const float pos[4][3] = {{.5f, -.5f, -.5f}, {.5f, .5f, -.5f}, {.5f, .5f, .5f}, {.5f, -.5f, .5f}};
+        const float uvs[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        const int order[6] = {0, 2, 1, 0, 3, 2};
+        for (int i : order)
+            v.push_back({pos[i][0], pos[i][1], pos[i][2], uvs[i][0], uvs[i][1], 1, 0, 0});
     }
     disc_first_ = static_cast<int>(v.size());
     const int segments = 96;
@@ -288,11 +376,18 @@ void Gl3D::draw_range(const Mat4 &model, int first, int count, std::uint32_t tex
     glUniformMatrix4fv(u_model_, 1, GL_FALSE, model.m);
     glUniform4f(u_color_, r, g, b, alpha);
     glUniform1i(u_textured_, texture ? 1 : 0);
-    glUniform1f(u_ambient_, 0.62f);
+    glUniform1f(u_ambient_, ambient_);
     glUniform1f(u_flip_, flip_);
     glUniform1f(u_shine_, shine_);
     glUniform1f(u_sheen_, sheen_);
     glUniform1f(u_spin_, spin_);
+    glUniform4f(u_uvrect_, uvrect_[0], uvrect_[1], uvrect_[2], uvrect_[3]);
+    glUniform4f(u_glare_, glare_[0], glare_[1], glare_[2], glare_[3]);
+    glUniform2f(u_round_, round_[0], round_[1]);
+    glUniform4f(u_spine_, spine_[0], spine_[1], spine_[2], 0.0f);
+    glUniform4f(u_band_, band_[0], band_[1], band_[2], band_[3]);
+    glUniform4f(u_shade_, shade_[0], shade_[1], shade_[2], shade_[3]);
+    glUniform1f(u_film_, film_);
     if (reflect)
         glUniform2f(u_fade_, reflect->floor_y, reflect->fade_length);
     else
@@ -324,23 +419,45 @@ void Gl3D::draw(const CaseOp &op) noexcept
     const Mat4 body = mat4_multiply(place, mat4_scale(w, h, t));
     const CaseOp *fade = op.reflection ? &op : nullptr;
     const float a = op.alpha * (op.reflection ? 0.34f : 1.0f);
-    const float k = op.shade;
+    // style.css puts .dim (the side cases' darker film) on .f-front only: spines, sides and back stay as they are. The
+    // faces are flat CSS planes, so no lighting either (ambient 1).
+    const float k = 1.0f, kf = op.shade;
+    ambient_ = 1.0f;
     if (op.part != 2)
     {
         // The back wall and the sides first, then the tray inside.
         flip_ = op.flip_back ? 1.0f : 0.0f;
+        glare_[2] = h / w;
+        round_[0] = op.corner;
+        round_[1] = -op.corner_side;
         if (op.back)
             draw_range(body, box_back_, 6, op.back, k, k, k, a, fade);
         else
             draw_range(body, box_back_, 6, 0, op.side_r * k, op.side_g * k, op.side_b * k, a, fade);
         flip_ = 0.0f;
+        round_[0] = round_[1] = 0.0f;
         if (op.spine)
         {
-            // Sides 12..17 are the left edge: replace it with the spine picture.
-            draw_range(body, box_sides_ + 6, box_sides_count_ - 6, 0, op.side_r * k, op.side_g * k, op.side_b * k, a, fade);
+            // Sides 12..17 are the left edge, 18..23 the right: the spine picture replaces them.
+            const int skip = op.spine_both ? 12 : 6;
+            draw_range(body, box_sides_ + skip, box_sides_count_ - skip, 0, op.side_r * k, op.side_g * k, op.side_b * k, a,
+                       fade);
+            for (int c = 0; c < 4; ++c)
+                uvrect_[c] = op.spine_uv[c];
             flip_ = 1.0f;
+            spine_[0] = 1.0f, spine_[1] = op.spine_band_h, spine_[2] = 0.0f;
+            for (int c = 0; c < 4; ++c)
+                band_[c] = op.spine_band[c], shade_[c] = op.spine_shade[c];
             draw_range(body, spine_first_, 6, op.spine, k, k, k, a, fade);
+            if (op.spine_both)
+            {
+                spine_[2] = 1.0f;
+                draw_range(body, spine_right_first_, 6, op.spine, k, k, k, a, fade);
+            }
+            spine_[0] = spine_[1] = spine_[2] = 0.0f;
             flip_ = 0.0f;
+            uvrect_[0] = uvrect_[1] = 0.0f;
+            uvrect_[2] = uvrect_[3] = 1.0f;
         }
         else
             draw_range(body, box_sides_, box_sides_count_, 0, op.side_r * k, op.side_g * k, op.side_b * k, a, fade);
@@ -358,12 +475,24 @@ void Gl3D::draw(const CaseOp &op) noexcept
             door = mat4_multiply(place, mat4_multiply(mat4_scale(w, h, t), hinge));
         }
         shine_ = op.reflection ? 0.0f : op.shine;
+        glare_[0] = op.glare_pos;
+        glare_[1] = op.reflection ? 0.0f : op.glare;
+        glare_[2] = h / w;
+        glare_[3] = op.reflection ? -9.0f : op.sheen_pos;
+        round_[0] = op.corner;
+        round_[1] = op.corner_side;
+        film_ = op.reflection ? 0.0f : op.film;
         if (op.front)
-            draw_range(door, box_front_, 6, op.front, k, k, k, a, fade);
+            draw_range(door, box_front_, 6, op.front, kf, kf, kf, a, fade);
         else
-            draw_range(door, box_front_, 6, 0, op.side_r * k * 1.6f, op.side_g * k * 1.6f, op.side_b * k * 1.6f, a, fade);
+            draw_range(door, box_front_, 6, 0, op.side_r * kf * 1.6f, op.side_g * kf * 1.6f, op.side_b * kf * 1.6f, a,
+                       fade);
     }
     shine_ = 0.0f;
+    glare_[0] = 0.5f, glare_[1] = 0.0f, glare_[2] = 1.0f, glare_[3] = -9.0f;
+    round_[0] = round_[1] = 0.0f;
+    film_ = 0.0f;
+    ambient_ = 0.62f;
     if (op.reflection)
         glFrontFace(GL_CCW);
 }

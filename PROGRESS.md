@@ -308,3 +308,39 @@ PS2 games without art on the console keep the placeholder (expected). Verified *
   (dry run: 215 files). **Writes to the console: run only with the owner's go-ahead.**
 - App: `/data/boxshelf/covers` wins over the emulators' art; the emulator's picture stays as fallback.
 - Preview (`real-*` modes) checked with those covers: real PS5 / Switch / PS2 boxes on every case.
+
+## 2026-11-10 (later) — covers downloaded by the app itself; case anatomy 1:1
+
+**Owner: "everything automated, the user just opens the app".** The app now fetches its own box art on the console
+(nothing to run on a PC):
+- `src/app/art_fetcher.*`: background thread with HTTPS (PacBrew libcurl + OpenSSL through `src/net/console_curl.c`
+  from Estante). Sources and matching are Boxshelf's (`src/data/art_match.*`, the C++ port of lbindex.js `norm`,
+  `lookupNames`, `matchTitle`, `libretroMatch`; same answer as the Python tool on all 438 library entries):
+  libretro Named_Boxarts (index cached 7 days), GameTDB coverHQ by disc id (GC/Wii), GameTDB title databases
+  (switchtdb / 3dstdb zips, weekly, read with miniz). Pictures are shrunk to ≤1200 px JPEG (stb_image_write) into
+  `/download0/boxshelf/covers/<key>.jpg` (the app's own sandbox folder) and appear on the shelf as they arrive.
+  Misses are remembered (versioned file) only when the sources answered.
+- Priority: `/data/boxshelf/covers` (PC tool) > the app's downloads > emulator caches > `icon0`.
+- Licences of the linked libraries in `ps5/assets/licenses/`, THIRD_PARTY_NOTICES updated.
+- **Verified on:** PC (host build of the same fetcher: 184/211 libretro + GC/Wii, Switch 6/8 via GameTDB). **Not yet
+  on the console.** LaunchBox (the only PS5 box source) is still PC-tool only.
+
+**Owner: "the case still looks thick; look at how Boxshelf does it, 1:1".** Pixel comparison with Boxshelf showed
+the geometry already matched; the missing part was the finish. Now drawn in the 3D pass (`gl3d.cpp` shader):
+- Spines (style.css `.f-left`, setup.css `.f-right.spine2`) on both sides: case colour, `.spine-band` (top 9 %,
+  system label, "EMU"/"ADD" on the emulator/setup tiles) and `.spine-title` (Lexend 600, bd×.46, `spineInk`, top to
+  bottom, ellipsis), with setup.css's shading film (brighter on the selected case). Rendered every frame into one
+  spine atlas (`GlCanvas`, a row per case + band tiles).
+- `.glare` (104° band, stops on Boxshelf's 3-face gradient line, slid by `(-ry/110 - x/(bw*7))*83.25 %`; .55 on side
+  cases), `.sheen` sweep 380 ms after landing (.85 s, cubic-bezier(.3,.6,.3,1)).
+- `.f-front::after` film (top rim light, darker edges) moved from the baked cover into the shader so side cases get
+  it at .55 like Boxshelf.
+- Rounded corners (`rc`) only on the side away from the visible spine, mirrored right of the selection (`.rside`).
+- `.dim` darkens only the front (spines and sides stay full colour); no lighting on the case faces (CSS planes).
+- **Verified on:** PC preview, side by side with the Boxshelf capture `ref-gc-sel5` (spines, glare and corners
+  match); `make test` (data 224/0, shelf 57/0, list-library, preview) and `make app` build. **Not yet on the
+  console.**
+- Deviation: band label uses Lexend 800 (700 is not baked); the selected case's right side is not hidden behind the
+  "opening side" look (it faces away anyway).
+
+**Next step:** owner deploys and sends screenshots; then LaunchBox on the console (PS5 boxes), floor strips, backs.

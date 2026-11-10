@@ -27,6 +27,7 @@ struct CoverRequest
 struct CoverPixels
 {
     std::string key;
+    std::string path; // the file asked for (a newer cover may have replaced it since)
     int width = 0, height = 0;
     std::vector<std::uint32_t> pixels; // 0xAABBGGRR, top row first
     bool failed = false;

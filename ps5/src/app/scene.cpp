@@ -27,7 +27,6 @@ constexpr float kPi = 3.14159265f;
 
 const Color kInk = rgb(0xf3f5fb);                       // --ink
 const Color kInkDim = rgb(0xf3f5fb, 0.62f);             // --ink-dim
-const Color kGlass = Color{8 / 255.0f, 10 / 255.0f, 20 / 255.0f, 0.46f}; // --glass
 const Color kLine = Color{1, 1, 1, 0.16f};              // --line
 
 Color transparent(Color c)
@@ -166,25 +165,6 @@ const char *tab_name(data::System s)
     case System::media: return "Media";
     default: return "";
     }
-}
-
-// ---- 3D helpers (CSS transforms) --------------------------------------------------------------------------------
-
-struct V3
-{
-    float x, y, z;
-};
-// rotateY(deg) as CSS applies it, then the scene perspective.
-V3 rotate_y(V3 p, float deg)
-{
-    const float a = deg * kPi / 180.0f, c = std::cos(a), s = std::sin(a);
-    return {c * p.x + s * p.z, p.y, -s * p.x + c * p.z};
-}
-void project(V3 p, float &sx, float &sy)
-{
-    const float k = kPerspective / (kPerspective - p.z);
-    sx = kTrackX + (p.x - kTrackX) * k;
-    sy = kTrackY + (p.y - kTrackY) * k;
 }
 
 // The game's meta line (app.js metaFor()).
@@ -415,11 +395,36 @@ void ShelfScreen::draw_floor_and_halo(DrawList &list, double now)
 
 // ---- cases ------------------------------------------------------------------------------------------------------
 
+void ShelfScreen::art_arrived(const std::string &game_id, const std::string &path)
+{
+    if (model_.set_cover(game_id, path))
+    {
+        // the old picture (or the placeholder) goes; the next frame asks for the new one
+        const auto it = art_.find(game_id);
+        if (it != art_.end())
+        {
+            stale_.push_back(std::move(it->second));
+            art_.erase(it);
+        }
+        art_missing_.erase(std::remove(art_missing_.begin(), art_missing_.end(), game_id), art_missing_.end());
+        loader_.forget(game_id);
+        wish_.clear();
+    }
+}
+
 void ShelfScreen::update_covers(GlCanvas &canvas)
 {
+    for (auto &old : stale_)
+        canvas.invalidate(old->pixels.data());
+    stale_.clear();
     // Finished decodes come in; failed ones are remembered so the placeholder stays.
     for (auto &c : loader_.take())
     {
+        if (const Item *now = model_.find(c->key); now && now->game.cover_front != c->path)
+        {
+            loader_.forget(c->key); // a newer cover arrived while this one was decoding
+            continue;
+        }
         if (c->failed || c->pixels.empty())
         {
             art_missing_.push_back(c->key);
@@ -551,16 +556,100 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     std::stable_sort(order.begin(), order.end(),
                      [&](int a, int b) { return std::abs(a - sel) > std::abs(b - sel); });
 
-    // The sides carry setup.css's shading film (.f-left::after: linear-gradient(90deg, rgba(0,0,0,.35),
-    // rgba(255,255,255,.06) 45%, rgba(0,0,0,.25))): on average they sit ~20 % darker than the plastic's colour.
+    // The sides: plain plastic where no spine shows (top, bottom), ~20 % under the case colour.
     const Color side0 = rgb(st.case_side);
     const Color side{side0.r * .8f, side0.g * .8f, side0.b * .8f, 1.0f};
+
+    std::vector<int> drawn;
     for (int i : order)
+        if (slots_[static_cast<std::size_t>(i)].fade.at(now) > 0.01f)
+            drawn.push_back(i);
+
+    // ---- spines (style.css .f-left / setup.css .f-right.spine2): one atlas row per case, band tiles at the right
+    // A row is R pixels across the spine's depth and L along its height, so the row keeps the face's proportions.
+    constexpr float R = 48.0f, kBandX = 1096.0f;
+    const float AW = static_cast<float>(GlCanvas::spine_width), AH = static_cast<float>(GlCanvas::spine_height);
+    const float L = std::min(1088.0f, R * bh / std::max(bd, 1.0f));
+    const float band_h = std::round(L * .09f); // .spine-band height: 9%
+    const float pad = 8.0f * R / std::max(bd, 1.0f); // .spine-title padding: 8px
+    struct BandTile
+    {
+        std::string label;
+        float y;
+    };
+    std::vector<BandTile> tiles;
+    std::vector<float> rows(slots_.size(), -1.0f);
+    std::vector<float> tile_of(slots_.size(), 0.0f);
+    const UiFont title_face = app::face(Face::lexend600);
+    canvas.begin_spine();
+    {
+        DrawList &sl = canvas.list();
+        const Color plastic = rgb(st.case_color), ink = rgb(st.spine_ink);
+        const Color band_bg = rgb(st.spine_band.bg), band_fg = rgb(st.spine_band.fg);
+        float next_row = 0.0f;
+        for (int i : drawn)
+        {
+            if (next_row + R > AH)
+                break;
+            const Item &item = shelf.items[static_cast<std::size_t>(i)];
+            const float y0 = next_row;
+            next_row += R;
+            rows[static_cast<std::size_t>(i)] = y0;
+            sl.push_clip({0, y0, L, R});
+            sl.rounded_rect({0, y0, L, R}, 0, plastic);
+            // .spine-title: 600, bd*.46, --spine-ink, nowrap, ellipsis, max-height 88 %, top to bottom after the band
+            const float size = R * .46f, room = L * .88f - pad * 2.0f;
+            std::string t = item.title;
+            if (title_face && measure(Face::lexend600, t, size) > room)
+            {
+                const std::string dots = "\xe2\x80\xa6";
+                while (!t.empty() && measure(Face::lexend600, t + dots, size) > room)
+                {
+                    t.pop_back();
+                    while (!t.empty() && (static_cast<unsigned char>(t.back()) & 0xc0) == 0x80)
+                        t.pop_back();
+                }
+                while (!t.empty() && t.back() == ' ')
+                    t.pop_back();
+                t += dots;
+            }
+            text(sl, Face::lexend600, t, band_h + pad, y0, size, ink, Align::left, 0.0f, R);
+            sl.pop_clip();
+            // .spine-band label: the system's ("GCN"), "EMU" on an emulator tile, "ADD" on the setup tile
+            const std::string label = item.kind == ItemKind::emulator ? "EMU"
+                                      : item.kind == ItemKind::setup  ? "ADD"
+                                                                      : std::string(st.spine_band.label);
+            auto found = std::find_if(tiles.begin(), tiles.end(), [&](const BandTile &b) { return b.label == label; });
+            if (found == tiles.end())
+            {
+                const float ty = tiles.empty() ? 0.0f : tiles.back().y + band_h + 4.0f;
+                if (ty + band_h <= AH)
+                {
+                    tiles.push_back({label, ty});
+                    found = tiles.end() - 1;
+                    // display grid, place-items center; 700 (Lexend 800 is the nearest baked weight), .02em
+                    sl.push_clip({kBandX, ty, R, band_h});
+                    sl.rounded_rect({kBandX, ty, R, band_h}, 0, band_bg);
+                    const float ls = R * .3f;
+                    text(sl, Face::lexend800, label, kBandX + R * .5f, ty, ls, band_fg, Align::center, .02f, band_h);
+                    sl.pop_clip();
+                }
+            }
+            tile_of[static_cast<std::size_t>(i)] = found == tiles.end() ? -1.0f : found->y;
+        }
+    }
+    canvas.end_spine();
+
+    // .sheen::after: 42 % of the face wide, from left -70 %, translateX(488 %) over .85 s cubic-bezier(.3,.6,.3,1),
+    // 380 ms after the selection lands.
+    static const Bezier sheen_ease{.3f, .6f, .3f, 1.0f};
+    const float since = static_cast<float>(now - landed_at_) - .38f;
+    const float sheen = since >= 0.0f && since <= .85f ? -.49f + 2.05f * sheen_ease(since / .85f) : -9.0f;
+
+    for (int i : drawn)
     {
         const auto &slot = slots_[static_cast<std::size_t>(i)];
         const float alpha = slot.fade.at(now);
-        if (alpha <= 0.01f)
-            continue;
         const Item &item = shelf.items[static_cast<std::size_t>(i)];
         const float x = slot.x.at(now), z = slot.z.at(now), ry = slot.ry.at(now);
         const bool is_sel = i == sel;
@@ -576,6 +665,34 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         op.side_r = side.r, op.side_g = side.g, op.side_b = side.b;
         op.alpha = alpha;
         op.shade = is_sel ? 1.0f : 0.66f; // .slot:not(.sel) .dim{opacity:.34}
+        // The front is rounded only away from the spine you see; cases right of the selection (.rside) mirror it.
+        op.corner = st.rc;
+        op.corner_side = i > sel ? -1.0f : 1.0f;
+        // .f-front::after film and .glare: full on the selected case, opacity .55 on the others
+        op.film = is_sel ? 1.0f : .55f;
+        op.glare = is_sel ? 1.0f : .55f;
+        // .glare: a layer 1.2 faces wide (left -10 %), translateX((-ry/110 - x/(bw*7)) * 83.25 %)
+        op.glare_pos = .5f + (-ry / 110.0f - x / (bw * 7.0f)) * 83.25f * .012f;
+        op.sheen_pos = is_sel ? sheen : -9.0f;
+        const float y0 = rows[static_cast<std::size_t>(i)];
+        if (y0 >= 0.0f && canvas.spine_texture())
+        {
+            op.spine = canvas.spine_texture();
+            op.spine_both = true;
+            op.spine_uv[0] = 0.0f, op.spine_uv[1] = 1.0f - (y0 + R) / AH;
+            op.spine_uv[2] = L / AW, op.spine_uv[3] = 1.0f - y0 / AH;
+            const float ty = tile_of[static_cast<std::size_t>(i)];
+            if (ty >= 0.0f)
+            {
+                op.spine_band[0] = kBandX / AW, op.spine_band[1] = 1.0f - ty / AH;
+                op.spine_band[2] = (kBandX + R) / AW, op.spine_band[3] = 1.0f - (ty + band_h) / AH;
+                op.spine_band_h = .09f;
+            }
+            // setup.css .f-left::after (and .f-right.spine2::after, the same from the back edge); brighter when selected
+            const float shade[4] = {.35f, .06f, .25f, .45f}, shade_sel[4] = {.15f, .14f, .2f, .45f};
+            for (int c = 0; c < 4; ++c)
+                op.spine_shade[c] = is_sel ? shade_sel[c] : shade[c];
+        }
         // Floor: the selected case's real reflection (setup.css box-reflect: below 3px, .3 fading over 42 %)
         if (is_sel)
         {
@@ -585,9 +702,6 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             r.fade_length = bh * .42f;
             canvas.case3d(r);
         }
-        // setup.css gives the selected face a faint inner glow (inset 0 0 22px -4px --glow); drawn flat over a face in
-        // perspective it read as a crooked frame on the TV (owner, 2026-11-10), so it is left out until it can be
-        // drawn inside the 3D pass. The halo and the lift still show the selection.
         canvas.case3d(op);
     }
 }

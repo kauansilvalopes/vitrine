@@ -135,6 +135,24 @@ variable font from https://github.com/google/fonts/tree/main/ofl/inter, cut with
 Regenerate with `bash tools/bake-fonts.sh` and `python3 tools/build-font-atlas.py` (Pillow 12.1.1).
 The committed atlases let the normal native build run without Pillow.
 
+## Boxshelf PS5: libraries shipped inside the app
+
+The Boxshelf PS5 title downloads box art itself (src/app/art_fetcher.cpp), so its eboot statically links PacBrew
+v0.40.2's libcurl 8.18.0, OpenSSL 3.5.2, zlib 1.3.2, zstd 1.5.6 and libpsl 0.21.5 (licences in the table above),
+run through `src/net/console_curl.c` (from Estante's update-check example, see above; four libc stand-ins it
+defined are left to `src/runtime/runtime_shims.c`). It also builds in miniz 3.0.2 (MIT, `src/third_party/miniz_all.c`,
+GameTDB's zipped databases) and stb_image_write v1.16 (public domain / MIT, `third_party/stb`, JPEG cache files).
+Their licence texts ship with the app in `assets/licenses/` (taken from each project's tag of that version).
+
+Box art itself is never part of this repository or the app: the console downloads it at run time, for the owner's
+personal use, from libretro thumbnails, GameTDB and (PC tool) the LaunchBox Games Database, the sources Boxshelf uses.
+
+## Boxshelf's fonts
+
+Lexend, Chakra Petch, Syne, Unbounded, Michroma, Audiowide, DM Serif Display and Bungee (SIL OFL 1.1, from Boxshelf's
+`renderer/fonts`, via Fontsource) are in `third_party/boxshelf-fonts` as TTF (converted from the woff2 with fontTools)
+and baked into `assets/fonts/*.huifont`; each licence is in both folders.
+
 ## GPU renderer (feat/gpu-ui)
 
 - **ps5-homebrew-ui** by BlackBearReloaded (GPL-3.0-or-later), https://github.com/blackbearreloaded/ps5-homebrew-ui:

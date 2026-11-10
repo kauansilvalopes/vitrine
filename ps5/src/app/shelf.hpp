@@ -85,6 +85,10 @@ class ShelfModel
     bool switch_shelf(int dir);
     // 0 at the first case, 1 at the last (app.js shelfPos()).
     float position() const;
+    // A game's new box art (the art fetcher's download): its picture becomes the fallback. False if not found.
+    bool set_cover(const std::string &game_id, const std::string &path);
+    // The game item with this id on any shelf, or null.
+    const Item *find(const std::string &game_id) const;
 
   private:
     std::vector<Shelf> shelves_;

@@ -42,6 +42,8 @@ class ShelfScreen
         return model_;
     }
     void settle(double now); // jumps every animation to its end
+    // A cover the art fetcher just downloaded: the game shows it from now on.
+    void art_arrived(const std::string &game_id, const std::string &path);
     // Covers asked for and not back yet (the preview waits for them).
     int covers_pending() const
     {
@@ -96,6 +98,7 @@ class ShelfScreen
     CoverLoader loader_;
     std::unordered_map<std::string, std::unique_ptr<CoverPixels>> art_;
     std::vector<std::string> art_new_; // decoded but not uploaded yet (the canvas must not reuse a stale texture)
+    std::vector<std::unique_ptr<CoverPixels>> stale_; // replaced pictures, kept until the canvas has forgotten them
     std::vector<std::string> art_missing_;
     std::string wish_;
     int covers_pending_ = 0;

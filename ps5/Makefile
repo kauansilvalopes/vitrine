@@ -23,13 +23,16 @@ override APP_STATIC_ARCHIVES := $(strip .deps/ps5-opengl/libps5opengl-group.a $(
 override APP_IMPORT_STUBS := $(strip $(OPENGL_SDK)/lib/libSceAgc.so \
 	$(OPENGL_SDK)/lib/libSceAgcDriver.so $(APP_IMPORT_STUBS))
 APP_WRAP_SYMBOLS ?=
+# HTTPS (box art downloads): PacBrew's libcurl + OpenSSL, run through src/net/console_curl.c (from Estante's
+# update-check example, docs/CURL.md there): fcntl must be wrapped in a sandboxed title.
+override PACBREW_PACKAGES := $(strip libcurl $(PACBREW_PACKAGES))
+override APP_WRAP_SYMBOLS := $(strip fcntl $(APP_WRAP_SYMBOLS))
 APP_SOURCE_DIR ?=
 APP_PARAM ?= sce_sys/param.json
 APP_SCE_SYS ?= sce_sys
 APP_ASSETS ?= assets
 APP_ROOT_FILES ?=
 APP_LAPY_HELPER ?= 0
-PACBREW_PACKAGES ?=
 PACBREW_INCLUDE_PATHS ?=
 PACBREW_STATIC_ARCHIVES ?=
 PS5_HOST ?=

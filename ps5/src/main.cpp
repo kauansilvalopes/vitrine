@@ -1,4 +1,5 @@
 // Boxshelf PS5 - console entry point. SPDX-License-Identifier: GPL-3.0-or-later
+#include "app/art_fetcher.hpp"
 #include "app/clock.hpp"
 #include "app/library_loader.hpp"
 #include "app/scene.hpp"
@@ -16,6 +17,7 @@ namespace
 std::int64_t start_us = 0, last_us = 0;
 boxshelf::app::ShelfScreen screen;
 boxshelf::app::LibraryLoader loader;
+boxshelf::app::ArtFetcher art;
 hui::ps5::Pad pad;
 hui::InputTracker tracker;
 bool pad_tried = false;
@@ -50,15 +52,20 @@ void draw(boxshelf::GlCanvas &canvas) noexcept
     last_us = now_us;
 
     std::vector<boxshelf::app::Shelf> shelves;
-    if (loader.take(shelves))
+    std::vector<boxshelf::app::ArtJob> jobs;
+    if (loader.take(shelves, jobs))
     {
         boxshelf::app::ShelfModel model;
         model.set(std::move(shelves));
         screen.set_library(std::move(model), now);
         screen.set_status("");
+        // Box art from the sources Boxshelf uses, downloaded in the background; covers appear as they land.
+        art.start(std::move(jobs));
     }
     else if (screen.model().empty())
         screen.set_status(loader.status());
+    for (const auto &[id, path] : art.take())
+        screen.art_arrived(id, path);
     if (!pad_tried)
     {
         pad_tried = true;

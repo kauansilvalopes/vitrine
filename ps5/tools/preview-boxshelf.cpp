@@ -14,6 +14,7 @@
 #include <EGL/eglext.h>
 #include <GL/glcorearb.h>
 
+#include "app/art_fetcher.hpp"
 #include "data/cover_index.hpp"
 
 #include <dirent.h>
@@ -229,7 +230,22 @@ boxshelf::app::ShelfModel real_library(const std::string &dir)
         index.add_boxshelf_covers(own);
     }
     for (auto &g : games)
+    {
         index.resolve(g);
+        // the covers the app's own fetcher downloaded (src/app/library_loader.cpp does the same on the console)
+        const std::string local = boxshelf::app::downloaded_cover_path(g.id);
+        if (FILE *f = std::fopen(local.c_str(), "rb"))
+        {
+            std::fclose(f);
+            if (g.cover_front.rfind("/data/boxshelf/covers/", 0) != 0)
+            {
+                if (!g.cover_front.empty())
+                    g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
+                g.cover_front = local;
+                g.cover_square = false;
+            }
+        }
+    }
     std::vector<std::string> installed;
     for (const auto &g : games)
         if (!g.app.empty())

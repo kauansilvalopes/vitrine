@@ -10,11 +10,15 @@ clang-18 -O1 -c src/cJSON.c -o build/preview/cjson.o
 clang-18 -O2 -c src/cover_decode.c -o build/preview/cover-decode.o
 # real-* modes read covers copied from the console into .local/console (tools/fetch-covers.py; never committed)
 export BOXSHELF_CONSOLE_DIR=${BOXSHELF_CONSOLE_DIR:-.local/console}
-clang++-18 -std=c++20 -O1 -g -DBOXSHELF_HOST_PREVIEW -DBOXSHELF_GL=1 -DGL_GLEXT_PROTOTYPES=1 \
+clang-18 -O2 -c src/art_codec.c -o build/preview/art-codec.o
+clang-18 -O2 -w -c src/third_party/miniz_all.c -o build/preview/miniz.o
+clang++-18 -std=c++20 -O1 -g -DBOXSHELF_HOST_PREVIEW -DBOXSHELF_HOST -DBOXSHELF_GL=1 -DGL_GLEXT_PROTOTYPES=1 \
   -Isrc -I$SDK -ffunction-sections -fdata-sections \
-  tools/preview-boxshelf.cpp tools/gl_host_platform.cpp src/app/*.cpp src/data/*.cpp src/gl_canvas.cpp src/gl3d.cpp \
+  tools/preview-boxshelf.cpp tools/gl_host_platform.cpp src/app/*.cpp src/data/*.cpp src/net/https.cpp \
+  src/gl_canvas.cpp src/gl3d.cpp \
   src/gfx/*.cpp src/core/save_file.cpp src/core/input.cpp build/preview/cjson.o build/preview/cover-decode.o \
-  -Wl,--gc-sections -pthread -l:libEGL.so.1 -l:libGL.so.1 -lm -o build/preview/preview-boxshelf-gl
+  build/preview/art-codec.o build/preview/miniz.o \
+  -Wl,--gc-sections -pthread -l:libEGL.so.1 -l:libGL.so.1 -lcurl -lm -o build/preview/preview-boxshelf-gl
 modes=${*:-gc gc-first n3ds sw ps2 psx wii wiiu ps5 anim empty-shelf loading}
 for mode in $modes; do
   build/preview/preview-boxshelf-gl ".local/gl-$mode.ppm" "$mode"

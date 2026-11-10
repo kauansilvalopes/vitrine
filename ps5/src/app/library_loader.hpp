@@ -2,6 +2,7 @@
 // Read-only: only GET requests. SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "app/art_fetcher.hpp"
 #include "app/shelf.hpp"
 
 #include <atomic>
@@ -15,8 +16,8 @@ class LibraryLoader
   public:
     // Starts the worker thread (once).
     void start();
-    // True once, when the shelves are ready to take.
-    bool take(std::vector<Shelf> &shelves);
+    // True once, when the shelves are ready to take; jobs: the games whose box art should be downloaded.
+    bool take(std::vector<Shelf> &shelves, std::vector<ArtJob> &jobs);
     // What the worker is doing ("Reading /mnt/usb0/Emulation/roms/ps2"), for the empty screen.
     std::string status() const;
 
@@ -26,6 +27,7 @@ class LibraryLoader
 
     std::atomic<int> state_{0}; // 0 idle, 1 working, 2 done, 3 taken
     std::vector<Shelf> result_;
+    std::vector<ArtJob> jobs_;
     std::atomic<const char *> status_{"Looking for your games"};
 };
 } // namespace boxshelf::app

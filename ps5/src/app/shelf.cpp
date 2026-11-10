@@ -158,6 +158,31 @@ float ShelfModel::position() const
     return static_cast<float>(selected()) / static_cast<float>(std::max(1, n - 1));
 }
 
+bool ShelfModel::set_cover(const std::string &game_id, const std::string &path)
+{
+    for (auto &s : shelves_)
+        for (auto &it : s.items)
+            if (it.kind == ItemKind::game && it.game.id == game_id)
+            {
+                auto &g = it.game;
+                if (!g.cover_front.empty() && g.cover_front != path)
+                    g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
+                g.cover_front = path;
+                g.cover_square = false;
+                return true;
+            }
+    return false;
+}
+
+const Item *ShelfModel::find(const std::string &game_id) const
+{
+    for (const auto &s : shelves_)
+        for (const auto &it : s.items)
+            if (it.kind == ItemKind::game && it.game.id == game_id)
+                return &it;
+    return nullptr;
+}
+
 Pose place(int index, int selected, float bw, float bd)
 {
     const int d = index - selected, ad = std::abs(d), sg = (d > 0) - (d < 0);

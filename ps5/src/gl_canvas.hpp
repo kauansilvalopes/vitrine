@@ -39,14 +39,15 @@ class GlCanvas final
         return back_target_.texture();
     }
     static constexpr int back_width = 640, back_height = 960;
-    // The same for the 960x128 spine picture (text runs along its width, top to bottom on the case).
+    // The same for the spine atlas: one row per case (text runs along the row, top to bottom on the case) and a
+    // column of band tiles at the right. The rows are drawn upside down in the texture (CaseOp::spine_uv says so).
     void begin_spine() noexcept;
     void end_spine() noexcept;
     std::uint32_t spine_texture() const noexcept
     {
         return spine_target_.texture();
     }
-    static constexpr int spine_width = 960, spine_height = 128;
+    static constexpr int spine_width = 1152, spine_height = 1600;
     // CSS perspective for the 3D items of this frame (see Gl3D::set_camera).
     void set_camera(float distance, float origin_x, float origin_y) noexcept
     {

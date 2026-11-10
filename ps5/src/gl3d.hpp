@@ -42,6 +42,18 @@ struct CaseOp
     float floor_y = 0.0f, fade_length = 120.0f;
     int part = 0;                            // 0 the whole case, 1 everything but the front, 2 only the front
     float opening = 0.0f;                    // 0 closed .. 1 the front cover swung open on its left hinge
+    // Boxshelf's case anatomy (style.css / setup.css):
+    float spine_uv[4] = {0, 0, 1, 1};        // the part of `spine` this case shows (a row of the spine atlas)
+    bool spine_both = false;                 // the spine picture on the right side too (setup.css .f-right.spine2)
+    float glare = 0.0f;                      // .glare strength (1 selected, .55 the others; 0 none)
+    float glare_pos = 0.5f;                  // its centre across the front, 0..1
+    float sheen_pos = -9.0f;                 // .sheen sweep centre across the front (< -5: none)
+    float corner = 0.0f;                     // corner radius as a fraction of the width (style.rc)
+    float corner_side = 0.0f;                // which front corners round: 1 the right ones, -1 the left, 0 all
+    float spine_band[4] = {0, 0, 0, 0};      // .spine-band tile in `spine`: u left, v top, u right, v bottom
+    float spine_band_h = 0.0f;               // its share of the height (.09; 0 none)
+    float spine_shade[4] = {0, 0, 0, .5f};   // .f-left::after film: black alpha back, white alpha, black front, stop
+    float film = 0.0f;                       // .f-front::after film strength (1 selected, .55 others)
 };
 
 // A disc: label picture on the face, silver rim, hub and hole.
@@ -95,9 +107,12 @@ class Gl3D
     int surface_width_ = 1920, surface_height_ = 1080;
     Mat4 projection_{};
     // uniform locations
-    float flip_ = 0.0f, shine_ = 0.0f, sheen_ = 0.0f, spin_ = 0.0f;
+    float flip_ = 0.0f, shine_ = 0.0f, sheen_ = 0.0f, spin_ = 0.0f, ambient_ = 0.62f;
+    float uvrect_[4] = {0, 0, 1, 1}, glare_[4] = {0, 0, 1, -9}, round_[2] = {0, 0};
+    float spine_[3] = {0, 0, 0}, band_[4] = {0, 0, 0, 0}, shade_[4] = {0, 0, 0, .5f}, film_ = 0.0f;
+    int u_uvrect_ = -1, u_glare_ = -1, u_round_ = -1, u_spine_ = -1, u_band_ = -1, u_shade_ = -1, u_film_ = -1;
     int u_shine_ = -1, u_sheen_ = -1, u_spin_ = -1;
-    int spine_first_ = 0;
+    int spine_first_ = 0, spine_right_first_ = 0;
     int u_flip_ = -1;
     int u_mvp_ = -1, u_model_ = -1, u_tex_ = -1, u_color_ = -1, u_textured_ = -1, u_ambient_ = -1, u_fade_ = -1,
         u_light_ = -1;

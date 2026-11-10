@@ -1,6 +1,7 @@
 // Boxshelf PS5 - cover loader. SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/cover_loader.hpp"
 
+#include "app/art_fetcher.hpp"
 #include "app/elf_client.hpp"
 #include "cover_decode.h"
 #include "data/covers.hpp"
@@ -114,25 +115,17 @@ void frame_cover(data::System system, const std::uint32_t *art, int inner_w, int
     frame_inner(system, width, height, ix, iy, iw, ih);
     const float cr = static_cast<float>((st.case_color >> 16) & 0xff), cg = static_cast<float>((st.case_color >> 8) & 0xff),
                 cb = static_cast<float>(st.case_color & 0xff);
+    // The ::after film (top rim light, darker left and right edges) is drawn by the 3D pass (Gl3D u_film), at full
+    // strength on the selected case and .55 on the others, as style.css does.
     for (int y = 0; y < height; ++y)
-    {
-        // linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.04) 18%, transparent 34%)
-        const float ty = static_cast<float>(y) / static_cast<float>(height);
-        const float rim = ty < .18f ? .16f + (.04f - .16f) * ty / .18f : ty < .34f ? .04f * (1.0f - (ty - .18f) / .16f) : 0.0f;
         for (int x = 0; x < width; ++x)
         {
-            Rgb c{cr, cg, cb};
             const int ax = x - ix, ay = y - iy;
             if (ax >= 0 && ay >= 0 && ax < inner_w && ay < inner_h && ax < iw && ay < ih)
-                c = unpack(art[ay * inner_w + ax]);
-            // linear-gradient(90deg, rgba(0,0,0,.14), transparent 10%, transparent 88%, rgba(0,0,0,.18))
-            const float tx = static_cast<float>(x) / static_cast<float>(width);
-            const float dark = tx < .10f ? .14f * (1.0f - tx / .10f) : tx > .88f ? .18f * (tx - .88f) / .12f : 0.0f;
-            const float k = 1.0f - dark;
-            out[y * width + x] = pack((c.r + (255.0f - c.r) * rim) * k, (c.g + (255.0f - c.g) * rim) * k,
-                                      (c.b + (255.0f - c.b) * rim) * k);
+                out[y * width + x] = art[ay * inner_w + ax] | 0xff000000u;
+            else
+                out[y * width + x] = pack(cr, cg, cb);
         }
-    }
 }
 
 void fill_square(const std::uint32_t *icon, int edge, int width, int height, std::uint32_t *out)
@@ -230,18 +223,37 @@ void CoverLoader::work()
 
         auto result = std::make_unique<CoverPixels>();
         result->key = req.key;
+        result->path = req.path;
         result->width = req.width;
         result->height = req.height;
         // The console's 3840x2160 key art (pic0.png, up to ~16 MB) needs the large decoder (Estante reads it the
         // same way, one at a time); everything else is a small cover file.
         auto large = [](const std::string &p) { return p.size() > 8 && p.compare(p.size() - 8, 8, "pic0.png") == 0; };
+        // The app's own storage (downloaded art) is read directly; everything else through Elf Arsenal.
+        auto fetch = [](const std::string &path, std::string &out, std::size_t max)
+        {
+            const std::string root = storage_root();
+            if (path.compare(0, root.size(), root) == 0)
+            {
+                out.clear();
+                FILE *f = std::fopen(path.c_str(), "rb");
+                if (!f)
+                    return false;
+                char chunk[16384];
+                std::size_t n;
+                while ((n = std::fread(chunk, 1, sizeof chunk, f)) > 0 && out.size() < max)
+                    out.append(chunk, n);
+                std::fclose(f);
+                return !out.empty();
+            }
+            return elf_get(fs_url("/api/fs/download?path=", path), out, max) && !out.empty();
+        };
         std::string bytes, used = req.path;
-        bool got = elf_get(fs_url("/api/fs/download?path=", req.path), bytes, large(req.path) ? 32u << 20 : 12u << 20) &&
-                   !bytes.empty();
+        bool got = fetch(req.path, bytes, large(req.path) ? 32u << 20 : 12u << 20);
         if (!got && !req.fallback.empty())
         {
             used = req.fallback;
-            got = elf_get(fs_url("/api/fs/download?path=", req.fallback), bytes, 12u << 20) && !bytes.empty();
+            got = fetch(req.fallback, bytes, 12u << 20);
             req.square = req.fallback_square;
         }
         int ix, iy, iw, ih;

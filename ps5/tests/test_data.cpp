@@ -1,5 +1,6 @@
 // Boxshelf PS5 - host unit tests for the data layer (src/data). SPDX-License-Identifier: GPL-3.0-or-later
 // Game names below are made up; no real titles are needed to test the rules.
+#include "data/art_match.hpp"
 #include "data/cover_index.hpp"
 #include "data/covers.hpp"
 #include "data/scan.hpp"
@@ -289,6 +290,50 @@ static void test_cover_index()
     CHECK(meaningless("ab") && meaningless("0123ABCD") && !meaningless("Zelda"));
 }
 
+static void test_art_match()
+{
+    // lbindex.js norm
+    CHECK_EQ(art_norm("The Legend of Zelda: Majora's Mask 3D"), "legend of zelda majoras mask 3d");
+    CHECK_EQ(art_norm("Pok\xc3\xa9mon & Friends"), "pokemon and friends");
+    CHECK_EQ(art_norm("Final Fantasy XII"), "final fantasy 12");
+    CHECK_EQ(art_norm("Mega Man X"), "mega man x"); // a lone x stays
+    CHECK_EQ(art_norm("\xc3\x86on Flux"), "on flux"); // Æ does not decompose (NFD): a space, as in Boxshelf
+    // lookupNames: the edition tail comes off
+    const auto names = lookup_names("Super Game - Definitive Edition");
+    CHECK(names.size() == 2 && names[1] == "Super Game");
+    // matchTitle
+    std::vector<ArtEntry> list = {{art_norm("Pikmin"), "Pikmin", 1}, {art_norm("Pikmin 2"), "Pikmin 2", 1},
+                                  {art_norm("Finding Nemo"), "Finding Nemo", 1},
+                                  {art_norm("Metroid Prime 4: Beyond"), "Metroid Prime 4: Beyond", 1}};
+    CHECK_EQ(match_title(list, "Pikmin 2"), 1);
+    CHECK_EQ(match_title(list, "Disney-Pixar Finding Nemo"), 2);       // brand prefix dropped
+    CHECK_EQ(match_title(list, "Metroid Prime 4 Beyond Deluxe"), 3);   // close call
+    CHECK_EQ(match_title(list, "Pikmin 3"), -1);                       // a number never stands in for another
+    CHECK_EQ(match_title(list, "disc"), -1);                           // a generic name matches nothing
+    // libretro names
+    CHECK_EQ(libretro_title("Legend of Zelda, The - Majora's Mask 3D (Europe) (En,Fr)"), "The Legend of Zelda - Majora's Mask 3D");
+    const auto idx = parse_libretro_index(R"(<a href="Racer%20One%20%28USA%29.png">x</a><a href="..">up</a>)"
+                                          R"(<a href="Racer%20One%20%28Europe%29.png">y</a><a href="A%20%26amp%3B%20B.png">)");
+    CHECK(idx.size() == 3 && idx[0] == "Racer One (USA)");
+    CHECK_EQ(libretro_match(idx, "Racer One", "Europe"), "Racer One (Europe)"); // the game's own region first
+    CHECK_EQ(libretro_match(idx, "Racer One", ""), "Racer One (USA)");
+    CHECK(libretro_url("ps2", "A & B (USA)") ==
+          "https://thumbnails.libretro.com/Sony%20-%20PlayStation%202/Named_Boxarts/A%20%26%20B%20%28USA%29.png");
+    CHECK(libretro_system("ps5").empty());
+    // GameTDB title database
+    const auto tdb = parse_gametdb(R"(<datafile><game name="x"><id>AAAAA</id><type>Switch</type><region>ALL</region>)"
+                                   R"(<locale lang="EN"><title>Kart Racer &amp; Friends</title></locale></game>)"
+                                   R"(<game name="y"><id>BBBBB</id><type>Switch</type><region>NTSC-J</region>)"
+                                   R"(<locale lang="EN"><title>Kart Racer &amp; Friends</title></locale></game>)"
+                                   R"(<game name="z"><id>CCCCC</id><type>eShop</type><region>ALL</region>)"
+                                   R"(<locale lang="EN"><title>Other</title></locale></game></datafile>)",
+                                   {"Switch"});
+    CHECK(tdb.size() == 2 && tdb[0].id == "AAAAA" && tdb[0].norm == "kart racer and friends");
+    const auto urls = gametdb_front_urls(tdb, "sw", "Kart Racer & Friends");
+    CHECK(!urls.empty() && urls[0] == "https://art.gametdb.com/switch/coverHQ/US/AAAAA.jpg");
+    CHECK(gametdb_front_urls(tdb, "ps2", "Kart Racer & Friends").empty());
+}
+
 static void test_covers()
 {
     // covers.js drawFront: W=420, H=round(W/ratio), band = round(H*.085).
@@ -333,6 +378,7 @@ static void test_covers()
 
 int main()
 {
+    test_art_match();
     test_cover_index();
     test_covers();
     test_styles();

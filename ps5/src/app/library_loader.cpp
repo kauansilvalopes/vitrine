@@ -2,7 +2,10 @@
 #include "app/library_loader.hpp"
 
 #include "app/elf_client.hpp"
+#include "data/art_match.hpp"
 #include "data/cover_index.hpp"
+
+#include <sys/stat.h>
 #include "data/scan.hpp"
 #include "platform/ps5/system.hpp"
 
@@ -107,7 +110,30 @@ void LibraryLoader::work()
     }
     int covered = 0;
     for (auto &g : games)
+    {
         covered += index.resolve(g);
+        const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
+        // box art the app downloaded earlier (art_fetcher), when the PC tool sent none
+        struct stat st
+        {
+        };
+        const std::string local = downloaded_cover_path(g.id);
+        if (!own && stat(local.c_str(), &st) == 0 && st.st_size > 0)
+        {
+            if (!g.cover_front.empty())
+                g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
+            g.cover_front = local;
+            g.cover_square = false;
+            ++covered;
+            continue;
+        }
+        // nothing of Boxshelf's own yet: ask the sources Boxshelf uses (libretro has no PS5 or apps)
+        const std::string key(style(g.system).key);
+        const bool source = !data::libretro_system(key).empty() || !data::gametdb_art(key).empty() ||
+                            g.system == System::gc || g.system == System::wii;
+        if (!own && source)
+            jobs_.push_back({g.id, key, g.title, g.region, g.disc_id});
+    }
     hui::sys::log("[BOXSHELF] library: box art matched for %d of %zu games", covered, games.size());
     std::vector<Shelf> shelves;
     for (const auto &s : build_shelves(games))
@@ -124,12 +150,13 @@ void LibraryLoader::work()
     state_ = 2;
 }
 
-bool LibraryLoader::take(std::vector<Shelf> &shelves)
+bool LibraryLoader::take(std::vector<Shelf> &shelves, std::vector<ArtJob> &jobs)
 {
     int expected = 2;
     if (!state_.compare_exchange_strong(expected, 3))
         return false;
     shelves = std::move(result_);
+    jobs = std::move(jobs_);
     return true;
 }
 
