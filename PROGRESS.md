@@ -293,3 +293,18 @@ PS2 games without art on the console keep the placeholder (expected). Verified *
   colour; style.css `.f-front` padding) with the clear plastic's rim light and edge darkening baked in; square art
   (Switch icons, PS5/PS4 `icon0`, 3DS icon fallback) is cropped to fill the face. Tried the 3840x2160 `pic0.png`
   key art for PS5: cropped to a case it was often a meaningless close-up, so `icon0` (it carries the logo) is used.
+
+**Owner: "take the art from where Boxshelf takes it".** Done (PC; upload waits for the owner):
+- `tools/boxshelf_covers.py`: port of Boxshelf's `main/covers.js` sources and name matching (lbindex.js `norm`,
+  `lookupNames`, `matchTitle`, `libretroMatch`): 1. libretro thumbnails Named_Boxarts, 2. LaunchBox Games Database
+  (Metadata.zip indexed once every 60 days; Box - Front and its fallbacks; the only source with PS5 boxes),
+  3. GameTDB coverHQ by disc id (GC/Wii). Pictures are shrunk to ≤1200 px JPEG (the console decoder stops at 2400).
+  Result on the owner's library: **215 covers** (PS1, PS2 incl. the 60 that had none, GC, Wii, Wii U, 3DS, Switch,
+  PS4, 5 PS5). Not found: titles the console reports in Portuguese ("Indiana Jones e o Grande Círculo", "LEGO
+  Batman: O Legado…"), EA FC 27, PC5, Ocarina 4k, Akumajou D X — those keep the console's art.
+  Deviation from Boxshelf: the part before " and " must match exactly (Boxshelf's close call took "Indiana Jones and
+  the Staff of Kings" to "…the Great Circle").
+- `tools/upload-covers.py`: FTP into a new folder of this app only, `/data/boxshelf/covers/<game id>.jpg`
+  (dry run: 215 files). **Writes to the console: run only with the owner's go-ahead.**
+- App: `/data/boxshelf/covers` wins over the emulators' art; the emulator's picture stays as fallback.
+- Preview (`real-*` modes) checked with those covers: real PS5 / Switch / PS2 boxes on every case.
