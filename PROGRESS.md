@@ -435,3 +435,10 @@ put games of every platform, a mock, with nice covers?"**
 - **Verified on:** PC — demo-check: 110 of 120 titles on libretro, the 10 Switch ones through GameTDB; the app's
   fetcher on the PC downloaded **120 / 120 fronts** and 18 backs; previews `demo-ps2-5`, `demo-n64-3`, `demo-x360-3`,
   `demo-gc-6-flip`. Unit tests (data 228/0, shelf 64/0), `make app` builds. **Not on the console yet.**
+
+## 2026-11-10 — release ps5-v0.1.0
+
+Owner said "sobe". Pushed branch `ps5-port`, tag `ps5-v0.1.0`, GitHub pre-release "Boxshelf PS5 0.1.0" with
+`PPSA99850.zip` (SHA-256 eab81920680d25f439032ea63b2925a9812f3c1ef4838b7b71366462faedef3f), built from b1fea61 after
+the full test run. Marked pre-release: Flip, Play, the menu, backs and demo shelves are verified on the PC preview
+only. The tour videos (`.local/video`) are not published: they show box art.
