@@ -14,7 +14,7 @@ clang-18 -O2 -c src/art_codec.c -o build/preview/art-codec.o
 clang-18 -O2 -w -c src/third_party/miniz_all.c -o build/preview/miniz.o
 clang++-18 -std=c++20 -O1 -g -DBOXSHELF_HOST_PREVIEW -DBOXSHELF_HOST -DBOXSHELF_GL=1 -DGL_GLEXT_PROTOTYPES=1 \
   -Isrc -I$SDK -ffunction-sections -fdata-sections \
-  tools/preview-boxshelf.cpp tools/gl_host_platform.cpp src/app/*.cpp src/data/*.cpp src/net/https.cpp \
+  tools/preview-boxshelf.cpp tools/demo_library.cpp tools/gl_host_platform.cpp src/app/*.cpp src/data/*.cpp src/net/https.cpp \
   src/gl_canvas.cpp src/gl3d.cpp \
   src/gfx/*.cpp src/core/save_file.cpp src/core/input.cpp build/preview/cjson.o build/preview/cover-decode.o \
   build/preview/art-codec.o build/preview/miniz.o \

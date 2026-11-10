@@ -1,5 +1,5 @@
-// Boxshelf PS5 - the demo shelves. SPDX-License-Identifier: GPL-3.0-or-later
-#include "app/demo_library.hpp"
+// Boxshelf PS5 - the demo shelves (PC tools only: the tour video, tools/demo-check.sh). SPDX-License-Identifier: GPL-3.0-or-later
+#include "demo_library.hpp"
 
 namespace boxshelf::app
 {

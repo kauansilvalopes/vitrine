@@ -111,13 +111,7 @@ class ShelfScreen
     {
         return settings_;
     }
-    // Menu → Demo shelves changed: true once, then main swaps the shelves.
-    bool take_demo_request()
-    {
-        const bool r = demo_request_;
-        demo_request_ = false;
-        return r;
-    }
+
 
   private:
     void toast(const std::string &message, bool working, bool done, double now);
@@ -158,7 +152,6 @@ class ShelfScreen
     Glide qm_hl_{0.0f, 0.0f, -1.0, .32f, Bezier{.3f, .9f, .25f, 1.0f}, false}; // the white pill's row
     int qm_row_ = 0, qm_sub_ = -1, qm_chip_ = 0;
     int art_request_ = 0;
-    bool demo_request_ = false;
     std::string art_status_;
     bool art_running_ = false, art_asked_ = false;
     // Cross: Play. The launch runs on its own thread; its messages show in .toast (style.css).

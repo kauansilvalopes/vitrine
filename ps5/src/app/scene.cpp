@@ -4,7 +4,6 @@
 // which rule. CSS pixels are virtual pixels here (the canvas is 1920x1080, the size Boxshelf was measured at).
 #include "app/scene.hpp"
 
-#include "app/demo_library.hpp"
 #include "app/i18n.hpp"
 #include "app/ui_fonts.hpp"
 #include "data/scan.hpp"
@@ -300,8 +299,6 @@ void ShelfScreen::play(double now)
     if (launcher_.busy())
         return toast(tr("Still starting the last game"), false, false, now);
     const auto &g = it->game;
-    if (is_demo(g))
-        return toast(tr("A demo game: nothing to start"), false, false, now);
     LaunchRequest r;
     r.title = it->title;
     const auto sys = it->system;
@@ -1517,8 +1514,6 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
     }
     rows.push_back({3, tr("Box backs"), settings_.backs ? tr("Download") : tr("Off"), {tr("Download"), tr("Off")},
                     settings_.backs ? 0 : 1});
-    rows.push_back({4, tr("Demo shelves"), settings_.demo ? tr("On") : tr("Off"), {tr("Off"), tr("On")},
-                    settings_.demo ? 1 : 0});
     MenuRow l{1, tr("Language"), language_name(language()), {}, 0};
     for (std::size_t i = 0; i < std::size(kLangs); ++i)
     {
@@ -1532,17 +1527,14 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
 
 void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
 {
-    if (row.kind == 3 || row.kind == 4)
+    if (row.kind == 3)
     {
-        bool &flag = row.kind == 3 ? settings_.backs : settings_.demo;
-        const bool on = row.kind == 3 ? chip == 0 : chip == 1;
-        if (flag == on)
+        const bool on = chip == 0;
+        if (settings_.backs == on)
             return;
-        flag = on;
+        settings_.backs = on;
         if (!save_settings(settings_))
             toast(tr("Could not save the settings"), false, false, now);
-        if (row.kind == 4)
-            demo_request_ = true;
         else if (on && !art_running_)
             art_request_ = 1, art_asked_ = true; // fetch the backs now
         return;

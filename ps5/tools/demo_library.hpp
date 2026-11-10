@@ -1,5 +1,5 @@
-// Boxshelf PS5 - the demo shelves (Menu → Demo shelves): well-known games on every platform, for screenshots and
-// videos. Only titles live here; their box art is downloaded at run time from the sources Boxshelf uses (libretro,
+// Boxshelf PS5 - the demo shelves of the PC preview's tour video: well-known games on every platform. Not in the
+// app. Only titles live here; their box art is downloaded at run time from the sources Boxshelf uses (libretro,
 // GameTDB), like any other game's, and kept in the app's own folder. SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 

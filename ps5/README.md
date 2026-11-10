@@ -16,8 +16,8 @@ ps5-homebrew-ui and ps5-opengl (GPL-3.0). The UI in `src/app/` is a port of Boxs
 - Box art downloaded by the app from the sources Boxshelf uses (libretro thumbnails, GameTDB), fronts and backs.
 - ✕ Play starts the game in its emulator (straight into the game where the emulator allows it); △ turns the case
   to its back.
-- ☰ Menu: move a game to another shelf, box art (find missing / download all again), box backs on or off, demo
-  shelves, language (English, Português, Español).
+- ☰ Menu: move a game to another shelf, box art (find missing / download all again), box backs on or off, language
+  (English, Português, Español).
 
 ## Install
 

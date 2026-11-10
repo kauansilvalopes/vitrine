@@ -4,7 +4,7 @@
 // usage: preview-boxshelf-gl <out.ppm> <mode>
 // The library is made up (the same invented titles as Boxshelf's renderer/mock.js), so no real game is needed.
 #include "app/clock.hpp"
-#include "app/demo_library.hpp"
+#include "demo_library.hpp"
 #include "app/i18n.hpp"
 #include "app/scene.hpp"
 #include "app/ui_fonts.hpp"
@@ -359,9 +359,6 @@ int main(int argc, char **argv)
         model.set(std::move(shelves));
         screen.set_library(std::move(model), 0.0);
         host.clock = boxshelf::app::format_clock(1794316500LL); // 2026-11-10 13:15, in the interface language
-        boxshelf::app::Settings demo_on;
-        demo_on.demo = true; // the menu says what is on screen
-        screen.set_settings(demo_on);
         auto &m = screen.model();
         m.go(4);
         // the timeline: (seconds, what happens)
@@ -381,7 +378,7 @@ int main(int argc, char **argv)
             if (sys == boxshelf::data::System::sw || sys == boxshelf::data::System::n3ds)
                 at(1.2, Flip), at(2.6, Back);
         }
-        // the quick menu: Box backs, Demo shelves, Language
+        // the quick menu: Box art, Box backs, Language
         at(1.6, Menu), at(1.0, Down), at(0.8, Down), at(0.8, Down), at(1.6, Menu);
         const double end = t + 2.2;
         const std::string cmd = std::string("ffmpeg -loglevel error -y -f rawvideo -pix_fmt rgb24 -s 1920x1080 -r 60 -i - ") +
