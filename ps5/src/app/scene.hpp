@@ -5,6 +5,7 @@
 
 #include "app/cover_loader.hpp"
 #include "app/css.hpp"
+#include "app/launcher.hpp"
 #include "app/shelf.hpp"
 #include "core/held_step.hpp"
 #include "core/input.hpp"
@@ -80,6 +81,9 @@ class ShelfScreen
     // covers.js drawBack(): the made-up back of a game with no back art, drawn into r of the current list.
     void draw_made_up_back(hui::gfx::DrawList &list, const Item &item, const hui::gfx::Rect &r);
     void set_flipped(bool on, double now);
+    void play(double now);
+    void toast(const std::string &message, bool working, bool done, double now);
+    void draw_toast(hui::gfx::DrawList &list, double now);
     void update_covers(GlCanvas &canvas);
 
     ShelfModel model_;
@@ -94,6 +98,12 @@ class ShelfScreen
     bool flipped_ = false;
     Glide flip_{0.0f, 0.0f, -1.0, .75f, Bezier{.3f, .95f, .25f, 1.0f}, true};
     double north_down_ = -1.0;
+    // Cross: Play. The launch runs on its own thread; its messages show in .toast (style.css).
+    Launcher launcher_;
+    unsigned launch_serial_ = 0;
+    std::string toast_;
+    bool toast_work_ = false, toast_done_ = false;
+    double toast_at_ = -10.0, toast_until_ = -10.0;
     Glide pill_x_, pill_w_;
     std::string flash_;
     double flash_at_ = -10.0;

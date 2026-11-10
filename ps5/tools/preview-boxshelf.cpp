@@ -291,7 +291,7 @@ int main(int argc, char **argv)
     std::string mode = argv[2];
     // <mode>-flip: the selected case turned round (Triangle), <mode>-turn: caught mid-turn
     int flip = 0;
-    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}})
+    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}})
         if (mode.size() > std::strlen(suffix) && mode.compare(mode.size() - std::strlen(suffix), std::string::npos, suffix) == 0)
             flip = kind, mode.resize(mode.size() - std::strlen(suffix));
     auto press_triangle = [](boxshelf::app::ShelfScreen &screen, double now)
@@ -394,6 +394,16 @@ int main(int argc, char **argv)
         in.nav = hui::Direction::right;
         screen.input(in, now, 0.016f);
         now += 0.06;
+    }
+    else if (flip == 3)
+    {
+        // Cross: the launch thread answers at once on the PC (no console); the toast is caught as it slides in
+        hui::InputFrame x;
+        x.pressed = x.held = hui::action_bit(hui::Action::confirm);
+        screen.input(x, now, 0.016f);
+        usleep(200000);
+        host.render(screen, now + 0.05);
+        now += 0.6;
     }
     else if (flip)
     {

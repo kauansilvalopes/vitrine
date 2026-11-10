@@ -5,6 +5,7 @@
 #include "app/scene.hpp"
 
 #include "app/ui_fonts.hpp"
+#include "data/scan.hpp"
 #include "data/covers.hpp"
 
 #include <algorithm>
@@ -285,6 +286,83 @@ void ShelfScreen::on_moved(double now)
     flip_.set(0.0f, now, true);
 }
 
+void ShelfScreen::play(double now)
+{
+    const Item *it = model_.item();
+    if (!it || it->kind != ItemKind::game)
+        return;
+    if (launcher_.busy())
+        return toast("Still starting the last game", false, false, now);
+    const auto &g = it->game;
+    LaunchRequest r;
+    r.title = it->title;
+    const auto sys = it->system;
+    if (sys == data::System::ps5 || sys == data::System::ps4 || sys == data::System::custom || sys == data::System::media)
+        r.app = g.app;
+    else
+    {
+        r.app = std::string(data::emulator_app(sys));
+        r.target = g.path;
+        r.ps1_folder = sys == data::System::psx && g.folder;
+        r.switch_folder = sys == data::System::sw && g.folder;
+    }
+    if (r.app.size() != 9)
+        return toast(std::string("No emulator for ") + tab_name(sys) + " on this console", false, false, now);
+    launcher_.start(std::move(r));
+}
+
+// .toast: a white pill sliding down from the top; a working one has a turning ring and stays, others leave.
+void ShelfScreen::toast(const std::string &message, bool working, bool done, double now)
+{
+    if (toast_.empty() || now > toast_until_ + .45)
+        toast_at_ = now;
+    toast_ = message;
+    toast_work_ = working;
+    toast_done_ = done;
+    toast_until_ = working ? now + 3600.0 : now + 2.6;
+}
+
+void ShelfScreen::draw_toast(DrawList &list, double now)
+{
+    const auto st = launcher_.status();
+    if (st.serial != launch_serial_)
+    {
+        launch_serial_ = st.serial;
+        toast(st.message, st.working, st.ok && !st.working, now);
+    }
+    if (toast_.empty())
+        return;
+    // transform .45s cubic-bezier(.22,.9,.25,1) from translateY(calc(-100% - 60px)) to 0
+    static const Bezier ease{.22f, .9f, .25f, 1.0f};
+    const float in = ease(static_cast<float>((now - toast_at_) / .45));
+    const float out = now > toast_until_ ? ease(static_cast<float>((now - toast_until_) / .45)) : 0.0f;
+    if (out >= 1.0f)
+    {
+        toast_.clear();
+        return;
+    }
+    // padding 9px 16px, 13px 600, border-radius 999px, background rgba(255,255,255,.95), color #10121a
+    const float fs = 13.0f, ring = toast_work_ ? 11.0f + 9.0f : 0.0f;
+    const float tw = measure(Face::lexend600, toast_, fs) + ring;
+    const float h = 9.0f * 2 + 17.0f, w = tw + 32.0f;
+    const float top = 22.0f, hidden = -(h + 60.0f);
+    const float y = top + hidden * (1.0f - in) + (hidden - top) * out;
+    const float x = (W - w) * .5f;
+    list.rounded_rect({x, y, w, h}, h * .5f, Color{1, 1, 1, .95f});
+    float tx = x + 16.0f;
+    if (toast_work_)
+    {
+        // .toast.work::before: 11px ring, 2px border rgba(16,18,26,.22), top #10121a, turning every .8 s
+        const float cx = tx + 5.5f, cy = y + h * .5f;
+        list.ring(cx, cy, 5.5f, 2.0f, Color{16 / 255.f, 18 / 255.f, 26 / 255.f, .22f});
+        const float a = static_cast<float>(std::fmod(now / .8, 1.0)) * 6.2831853f;
+        list.arc(cx, cy, 5.5f, 2.0f, a, 1.5708f, rgb(0x10121a), false);
+        tx += ring;
+    }
+    text(list, Face::lexend600, toast_, tx, y + 9.0f, fs, toast_done_ ? rgb(0x0f3d24) : rgb(0x10121a), Align::left, 0.0f,
+         17.0f);
+}
+
 void ShelfScreen::set_flipped(bool on, double now)
 {
     const Item *it = model_.item();
@@ -328,6 +406,9 @@ void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
     }
     if (in.is_pressed(hui::Action::back) && flipped_)
         set_flipped(false, now);
+    // Cross: Play (PAD_HINTS)
+    if (in.is_pressed(hui::Action::confirm))
+        play(now);
     // L2 / R2: System (PAD_HINTS: System = L2 R2); Up / Down do the same on the keyboard.
     int sys = systems_.step(in, dt);
     if (in.nav == hui::Direction::up)
@@ -1283,5 +1364,6 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
     draw_letter_flash(hud, now);
     if (!model_.empty())
         draw_hints(hud);
+    draw_toast(hud, now);
 }
 } // namespace boxshelf::app
