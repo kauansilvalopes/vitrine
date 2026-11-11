@@ -2202,7 +2202,14 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
         rows.push_back(std::move(r));
     }
     {
-        MenuRow a{2, tr("Box art"), art_running_ ? trf("Downloading %s", art_status_) : std::string(tr("Up to date")),
+        // "Up to date" only when every game has its own front; otherwise how many still have the made-up one
+        int bare = 0;
+        for (const Item *g : library_.all_games())
+            bare += g->game.cover_front.empty() && g->game.cover_fallback.empty();
+        MenuRow a{2, tr("Box art"),
+                  art_running_ ? trf("Downloading %s", art_status_)
+                  : bare       ? trf("%s without box art", std::to_string(bare))
+                               : std::string(tr("Up to date")),
                   {tr("Find missing"), tr("Download all again")}, -1};
         rows.push_back(std::move(a));
     }

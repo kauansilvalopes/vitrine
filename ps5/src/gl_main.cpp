@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <string>
 
+extern "C" void hui_heap_stats(size_t *live_bytes, size_t *peak_bytes, size_t *blocks, size_t *failures);
+
 namespace boxshelf
 {
 namespace
@@ -90,10 +92,12 @@ void run_gl(GlDrawScene draw) noexcept
         const std::int64_t now = hui::sys::monotonic_us();
         if (now - last_report >= 5000000)
         {
-            hui::sys::log("[BOXSHELF] gl: frames=%llu fps=%.1f draw_calls=%zu",
+            std::size_t live = 0, peak = 0, blocks = 0, failures = 0;
+            hui_heap_stats(&live, &peak, &blocks, &failures);
+            hui::sys::log("[BOXSHELF] gl: frames=%llu fps=%.1f draw_calls=%zu heap=%zuM peak=%zuM failed=%zu",
                           static_cast<unsigned long long>(frames),
                           static_cast<double>(frames) * 1e6 / static_cast<double>(now - last_report),
-                          renderer.last_draw_calls());
+                          renderer.last_draw_calls(), live >> 20, peak >> 20, failures);
             frames = 0;
             last_report = now;
         }

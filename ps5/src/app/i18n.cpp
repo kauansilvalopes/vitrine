@@ -173,6 +173,7 @@ constexpr Entry kTable[] = {
     {"Off", "Desligado", "Desactivado"},
     {"On", "Ligado", "Activado"},
     {"Box art", "Capas", "Car\xc3\xa1tulas"},
+    {"%s without box art", "%s sem capa", "%s sin carÃ¡tula"},
     {"Up to date", "Em dia", "Al d\xc3\xad" "a"},
     {"Downloading %s", "Baixando %s", "Descargando %s"},
     {"Find missing", "Buscar as que faltam", "Buscar las que faltan"},

@@ -155,10 +155,31 @@ void LibraryLoader::work()
         }
         hui::sys::log("[BOXSHELF] library: %d titles given their proper names", renamed);
     }
+    // PS5SX2 keeps <serial>.jpg, _back.jpg and _spine.jpg, but a back it could not find is "<serial>_back.missing":
+    // only the files that are there are used (a back that isn't comes from LaunchBox instead)
+    std::vector<std::string> pcsx2;
+    bool pcsx2_listed = false;
+    {
+        std::vector<DirEntry> list;
+        if (elf_get(fs_url("/api/fs/list?path=", "/data/PCSX2/covers"), body, 8u << 20) && parse_fs_list(body, list))
+            pcsx2_listed = true;
+        for (const auto &e : list)
+                if (!e.dir)
+                    pcsx2.push_back("/data/PCSX2/covers/" + e.name);
+        std::sort(pcsx2.begin(), pcsx2.end());
+    }
+    auto pcsx2_has = [&](const std::string &path)
+    { return !pcsx2_listed || path.rfind("/data/PCSX2/covers/", 0) != 0 || std::binary_search(pcsx2.begin(), pcsx2.end(), path); };
     int covered = 0;
     for (auto &g : games)
     {
-        covered += index.resolve(g);
+        bool has_art = index.resolve(g);
+        if (!pcsx2_has(g.cover_back))
+            g.cover_back.clear();
+        if (!pcsx2_has(g.cover_spine))
+            g.cover_spine.clear();
+        if (!pcsx2_has(g.cover_front))
+            g.cover_front.clear(), has_art = false;
         // the owner's shelf for it (menu: Move to shelf), after its art was found where it came from
         for (const auto &[id, key] : moves_)
             if (id == g.id)
@@ -178,8 +199,9 @@ void LibraryLoader::work()
                 g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
             g.cover_front = local;
             g.cover_square = false;
-            ++covered;
+            has_art = true;
         }
+        covered += has_art;
     }
     // what LaunchBox said about each game (fetched earlier), then what is still missing
     apply_info(games);

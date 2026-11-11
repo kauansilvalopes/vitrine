@@ -20,6 +20,7 @@ struct Sink
     std::string *body;
     std::size_t max;
     bool overflow = false;
+    CURL *easy = nullptr;
 };
 
 std::size_t on_body(char *data, std::size_t size, std::size_t count, void *user)
@@ -30,6 +31,14 @@ std::size_t on_body(char *data, std::size_t size, std::size_t count, void *user)
     {
         sink->overflow = true;
         return 0; // stops the transfer
+    }
+    if (sink->body->empty() && sink->easy)
+    {
+        // the whole body at once when its size is known: growing by doubling copies it and briefly takes twice
+        curl_off_t length = -1;
+        if (curl_easy_getinfo(sink->easy, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &length) == CURLE_OK && length > 0 &&
+            static_cast<std::size_t>(length) <= sink->max)
+            sink->body->reserve(static_cast<std::size_t>(length));
     }
     sink->body->append(data, n);
     return n;
@@ -81,6 +90,7 @@ bool https_get(const std::string &url, std::string &body, std::size_t max_bytes,
     console_curl_setup(easy); // no signals, the console's CA list, non-blocking sockets
 #endif
     Sink sink{&body, max_bytes};
+    sink.easy = easy;
     curl_easy_setopt(easy, CURLOPT_URL, url.c_str());
     curl_easy_setopt(easy, CURLOPT_PROTOCOLS_STR, "https");
     curl_easy_setopt(easy, CURLOPT_REDIR_PROTOCOLS_STR, "https");

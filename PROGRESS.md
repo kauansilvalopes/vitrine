@@ -615,3 +615,27 @@ Owner: "sobe tudo". contentVersion 01.004.000; tests (data 232/0, shelf 73/0, li
 SHA-256 b817550dad0f7cd0d3fe742f536e5cddde15c68c1e14910692e2a839f2e4fd93. Contents: LaunchBox, play time, hiding
 games, Inspect rebuilt (case, disc, cartridge, UMD), launch screen, glass panels, titled made-up fronts, start-up
 splash and ripple. Verified on the PC; the same build was deployed to the console, owner's test pending.
+
+## 2026-11-10 (late) — box art crash and PS5SX2 backs (from the console's klog)
+
+Owner: the menu said "Em dia" (up to date), yet "find missing" still had 27 games to look for. Many PS5SX2 backs did not
+show, and the app crashed while those 27 downloaded. The log was read from the console (Elf Arsenal /api/klogs, read
+only).
+
+- **Crash:** SIGILL in the art fetcher thread. Symbolised with build/llvm-pie.elf (base 0x400000): `operator new`
+  failing in `https_get` → `on_body` (string growth) under `ArtFetcher::fetch_back`. The app heap was a fixed 128 MB
+  mspace (src/runtime/app_heap.c). With -fno-exceptions, a failed new traps. Full-size LaunchBox/GameTDB pictures
+  (body up to 24 MB growing by doubling, plus the full decode) exhausted it.
+  - **Fix:** the heap is 512 MB, and an allocation the heap cannot serve falls back to the system's malloc (and
+    realloc/memalign) instead of failing. https_get reserves the Content-Length up front.
+  - **Logging:** the 5 s frame log now prints heap live/peak/failures.
+- **PS5SX2 backs not shown:** "cover failed" lines for /data/PCSX2/covers/*_back.jpg had two causes.
+  - Some do not exist: PS5SX2 writes `<serial>_back.missing` when it has none. The library loader now lists
+    /data/PCSX2/covers once and only keeps fronts, backs and spines that are there. A missing back is then fetched
+    from LaunchBox.
+  - The others exist (a 1516x2157 baseline JPEG decodes fine with the app's decoder on the PC). They failed while the
+    heap was exhausted by the fetch.
+- **Menu → Box art:** shows "N without box art" when games still have a made-up front. "Up to date" only shows when
+  none do.
+- The "box art matched for 332 of 232" count is fixed (a game is counted once).
+- **Verified on:** tests (data 232/0, shelf 73/0), `make app`, preview `real-ps2-3-menu`. Not yet on the console.
