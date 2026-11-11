@@ -452,8 +452,10 @@ void ShelfScreen::rebuild_home(double now)
     std::vector<const Item *> all = library_.all_games(); // Home ignores the filter, as in app.js
     std::vector<Item> items;
     std::vector<std::pair<long long, const Item *>> played;
+    auto shown = [&](const Item *it)
+    { return std::find(settings_.hidden.begin(), settings_.hidden.end(), it->game.id) == settings_.hidden.end(); };
     for (const Item *it : all)
-        if (const auto *h = settings_.history_of(it->game.id); h && h->count > 0)
+        if (const auto *h = settings_.history_of(it->game.id); h && h->count > 0 && shown(it))
             played.emplace_back(h->last, it);
     std::stable_sort(played.begin(), played.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
     std::vector<std::string> seen;
@@ -464,7 +466,7 @@ void ShelfScreen::rebuild_home(double now)
     }
     std::vector<const Item *> favs;
     for (const Item *it : all)
-        if (settings_.is_favorite(it->game.id) && std::find(seen.begin(), seen.end(), it->game.id) == seen.end())
+        if (settings_.is_favorite(it->game.id) && shown(it) && std::find(seen.begin(), seen.end(), it->game.id) == seen.end())
             favs.push_back(it);
     std::stable_sort(favs.begin(), favs.end(), [](const Item *a, const Item *b) { return data::title_less(a->title, b->title); });
     for (const Item *it : favs)
@@ -543,6 +545,9 @@ void ShelfScreen::arrange(double now)
     const std::string &f = settings_.filter, &order = settings_.sort;
     auto keep = [&](const Item &it)
     {
+        if (it.kind == ItemKind::game &&
+            std::find(settings_.hidden.begin(), settings_.hidden.end(), it.game.id) != settings_.hidden.end())
+            return false;
         if (it.kind != ItemKind::game || f == "all")
             return true;
         const auto *h = settings_.history_of(it.game.id);
@@ -2081,6 +2086,17 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
         rows.push_back(std::move(so));
         rows.push_back(std::move(fi));
     }
+    if (const Item *cur = model_.item(); cur && cur->kind == ItemKind::game)
+        rows.push_back({7, tr("Hide this game"), "", {tr("Hide")}, -1});
+    if (!settings_.hidden.empty())
+    {
+        MenuRow h{8, tr("Hidden games"), std::to_string(settings_.hidden.size()), {tr("Show them all")}, -1};
+        for (const auto &id : settings_.hidden)
+            for (const Item *g : library_.all_games())
+                if (g->game.id == id)
+                    h.chips.push_back(g->title.size() > 28 ? g->title.substr(0, 27) + "\xe2\x80\xa6" : g->title);
+        rows.push_back(std::move(h));
+    }
     rows.push_back({3, tr("Box backs"), settings_.backs ? tr("Download") : tr("Off"), {tr("Download"), tr("Off")},
                     settings_.backs ? 0 : 1});
     MenuRow l{1, tr("Language"), language_name(language()), {}, 0};
@@ -2096,6 +2112,40 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
 
 void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
 {
+    if (row.kind == 7)
+    {
+        const Item *cur = model_.item();
+        if (!cur || cur->kind != ItemKind::game)
+            return;
+        settings_.hidden.push_back(cur->game.id);
+        if (!save_settings(settings_))
+            return toast(tr("Could not save the settings"), false, false, now);
+        toast(trf("%s hidden. Menu > Hidden games brings it back", cur->title), false, true, now);
+        arrange(now);
+        return;
+    }
+    if (row.kind == 8)
+    {
+        // the first chip shows every hidden game again; the others one game each (in the order they were hidden)
+        if (chip == 0)
+            settings_.hidden.clear();
+        else
+        {
+            std::vector<std::string> present;
+            for (const auto &id : settings_.hidden)
+                for (const Item *g : library_.all_games())
+                    if (g->game.id == id)
+                        present.push_back(id);
+            if (chip - 1 < static_cast<int>(present.size()))
+                settings_.hidden.erase(std::remove(settings_.hidden.begin(), settings_.hidden.end(),
+                                                   present[static_cast<std::size_t>(chip - 1)]),
+                                       settings_.hidden.end());
+        }
+        if (!save_settings(settings_))
+            toast(tr("Could not save the settings"), false, false, now);
+        arrange(now);
+        return;
+    }
     if (row.kind == 5 || row.kind == 6)
     {
         const auto options = row.kind == 5 ? sort_options() : filter_options();
@@ -2183,7 +2233,7 @@ void ShelfScreen::menu_input(const hui::InputFrame &in, double now)
         {
             menu_apply(row, qm_chip_, now);
             qm_sub_ = -1;
-            if (row.kind == 0)
+            if (row.kind == 0 || row.kind == 7)
                 close();
         }
         else if (in.is_pressed(hui::Action::back) || in.nav == hui::Direction::up || in.nav == hui::Direction::down)

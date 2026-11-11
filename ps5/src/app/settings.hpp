@@ -18,6 +18,8 @@ struct Settings
     std::vector<std::pair<std::string, std::string>> moves;
     // Favourites (hold Triangle; app.js ui.favorites) and play history (app.js HIST: last start, how many starts)
     std::vector<std::string> favorites;
+    // Games hidden from every shelf (app.js ui.hidden: Details → Hide; Settings → Hidden games brings them back)
+    std::vector<std::string> hidden;
     struct Played
     {
         std::string id;

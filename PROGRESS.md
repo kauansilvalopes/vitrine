@@ -563,3 +563,15 @@ it like Boxshelf".
   error until Circle.
 - **Verified on:** PC previews (`real-gc-1-inspect` with BOXSHELF_ISP 0/1/2 and BOXSHELF_ISP_TURN, `real-sw-4-inspect`,
   `real-sw-4-play`), tests (data 232/0, shelf 68/0), `make app`. Not on the console.
+
+## 2026-11-10 (night) — LaunchBox on the console, hiding games
+
+- **LaunchBox** (3e5ec39): the app reads LaunchBox's Metadata.zip while it downloads (streamed through the zip's
+  inflate, never stored), keeps one small TSV per platform (refreshed every 60 days), and uses it for PS5 / PS4 boxes,
+  the back of every system it covers, and game info (overview, year, genres, developer, publisher, players, ratings)
+  shown in Details, the made-up back and the new sorts and filters.
+- **Hide a game** (app.js ui.hidden): Menu > Hide this game takes it off every shelf, Home included; Menu > Hidden games
+  brings back one or all. Saved in settings.json.
+- **Verified on:** PC host run of the streamed fetch (about 30 s from LaunchBox's server, 213 of 231 library games
+  matched, PS5 boxes downloaded), previews `real-ps5-1-details` and `real-gc-1-menu`, tests (data 232/0, shelf 68/0),
+  `make app`. Not on the console.

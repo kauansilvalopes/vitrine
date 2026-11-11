@@ -85,6 +85,9 @@ std::string Settings::to_json() const
     cJSON *m = cJSON_AddObjectToObject(root, "moves");
     for (const auto &[id, key] : moves)
         cJSON_AddStringToObject(m, id.c_str(), key.c_str());
+    cJSON *hid = cJSON_AddArrayToObject(root, "hidden");
+    for (const auto &id : hidden)
+        cJSON_AddItemToArray(hid, cJSON_CreateString(id.c_str()));
     cJSON *f = cJSON_AddArrayToObject(root, "favorites");
     for (const auto &id : favorites)
         cJSON_AddItemToArray(f, cJSON_CreateString(id.c_str()));
@@ -121,6 +124,9 @@ Settings Settings::from_json(const std::string &json)
     cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "moves"))
         if (e->string && cJSON_IsString(e) && e->valuestring)
             s.moves.emplace_back(e->string, e->valuestring);
+    cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "hidden"))
+        if (cJSON_IsString(e) && e->valuestring)
+            s.hidden.emplace_back(e->valuestring);
     cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "favorites"))
         if (cJSON_IsString(e) && e->valuestring)
             s.favorites.emplace_back(e->valuestring);
