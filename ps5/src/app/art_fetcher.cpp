@@ -554,13 +554,29 @@ bool ArtFetcher::gametdb_ready(const std::string &system)
                     const std::string n(name);
                     if (n.size() < 4 || n.compare(n.size() - 4, 4, ".xml") != 0)
                         continue;
-                    std::size_t size = 0;
-                    void *xml = mz_zip_reader_extract_to_heap(&archive, i, &size, 0);
-                    if (xml)
+                    // read as it inflates, a few games at a time: the whole XML (25 MB for Switch) does not fit
+                    // beside the rest in the app's 128 MB heap
+                    struct Feed
                     {
-                        db = data::parse_gametdb(std::string_view(static_cast<const char *>(xml), size), types);
-                        mz_free(xml);
-                    }
+                        std::string buf;
+                        const std::vector<std::string> *types;
+                        std::vector<data::TdbGame> *db;
+                    } feed{{}, &types, &db};
+                    auto take = [](void *user, mz_uint64, const void *data, size_t n) -> size_t
+                    {
+                        auto *f = static_cast<Feed *>(user);
+                        f->buf.append(static_cast<const char *>(data), n);
+                        const auto last = f->buf.rfind("</game>");
+                        if (last != std::string::npos)
+                        {
+                            const std::size_t end = last + 7;
+                            for (auto &g : data::parse_gametdb(std::string_view(f->buf.data(), end), *f->types))
+                                f->db->push_back(std::move(g));
+                            f->buf.erase(0, end);
+                        }
+                        return n;
+                    };
+                    mz_zip_reader_extract_to_callback(&archive, i, take, &feed, 0);
                     break;
                 }
                 mz_zip_reader_end(&archive);

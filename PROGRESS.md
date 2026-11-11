@@ -690,3 +690,25 @@ smoke) and `make app` pass. Tag ps5-v0.4.1, release "Vitrine 0.4.1", Latest, `PP
 
 - Catalog PR (owner: "sobe na prosperostore o pull request"): darkxex/ps5-homebrew-catalog#1249, apps/PPSA99850.json
   ps5-v0.3.0 -> ps5-v0.4.1 (0.4.0 skipped: it has the box art crash), sha256 = GitHub's digest, icon pinned to the tag.
+
+## 2026-11-11 — backs on the console after 0.4.1 (klog)
+
+- **Run after the owner's deploy of 0.4.1:** no crash. 388 pictures for 217 games in about 12 minutes; heap 57 MB
+  after, peak 108 MB, 20 failed allocations (the system malloc fallback served them).
+  - The data was wiped again ("0 titles given their proper names", LaunchBox read again). The session before had
+    closed normally and its reopen kept everything. Deploys (app updates) seem to wipe download0 too, not only
+    crashes; the klog ring (1024 lines) does not reach far enough to tell.
+- **Backs still missing per the log ("no back for"), about 15 games:**
+  - PS5 store titles LaunchBox does not have (EA SPORTS FC 27, PC5, two Portuguese titles);
+  - Stardew Valley (PS4);
+  - three PS2 games (Kung Fu Panda, Enter the Matrix, Marvel: Ultimate Alliance 2);
+  - three PS1 games, two of them Brazilian translations;
+  - Super Mario Galaxy 1/2 (Switch).
+- **"PS5SX2 has the back":** only 37 of the 211 PS2 serials have a `_back.jpg` in /data/PCSX2/covers (10 `.missing`).
+  Strings in its eboot show PS5SX2 takes backs from the LaunchBox Games Database too, and saves them only when a game
+  is opened there. Vitrine uses those 37 files and LaunchBox for the rest. Backs looked for during the 12-minute
+  refetch show the made-up back until they arrive.
+- **Switch/3DS GameTDB was always empty on the console ("0 boxed games"):** the whole XML (25 MB) was inflated at
+  once and the allocation failed. It is now parsed while it inflates (miniz extract_to_callback, complete <game>
+  blocks at a time). PC check: the same 4,861 Switch games, with a largest buffer of 38 KB instead of 25 MB.
+- Tests and `make app` pass. Not deployed.
