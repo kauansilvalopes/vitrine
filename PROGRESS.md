@@ -541,3 +541,25 @@ preview smoke) and `make app` pass; dist says "Vitrine" / 01.003.000 with the Ro
 "Vitrine 0.3.0", Latest, `PPSA99850.zip` (PPSA99850/ at its root), SHA-256
 2be46f4e37f1623f8b1c57262570a0b209664433ae82f3c363b27deff6017571. Contents: Home + favourites + history, shuffle,
 sort / filter, Details, Inspect (the entry above). Verified on the PC only; not run on the console.
+
+## 2026-11-10 (late night) — Inspect rebuilt, launch screen
+
+Owner: "skip themes and sounds, do the rest; Inspect (open the case, see the disc) is very buggy, research and make
+it like Boxshelf".
+- **Why Inspect looked broken:** the engine draws without a depth buffer (faces sorted back to front), fine for a
+  closed case on the shelf, wrong for an open case turned freely (lid, tray and disc overlapped in the wrong order),
+  and the lid only opened 55 degrees over a black tray.
+- **Rebuilt after inspect3d.js** (c67584a, 4845b85): a pass of its own with depth and 4x MSAA (resolved into a
+  texture shown over the shelf dimmed by rgba(3,4,8,.72)); a case 48 % of the screen tall (30 degree camera 3.9 case
+  heights away); hollow tray (back plate printed with the back, four walls, the inside lifted from black like
+  inspect3d.js, the disc cradle and the hub); printed spine; lid on its hinge opening to 165 degrees with the booklet
+  and two clips inside; the disc (cover label inside the case border, clear hub, silver data side) sized by app.js
+  MEDIA (GameCube .62 and seated .1 above the middle, Wii .86 ...); "take out": the case slides away left and turns
+  30 degrees, the disc comes forward 1.55x and spins slowly when left alone; Switch / 3DS hold a cartridge (dark shell,
+  label, gold contacts) in a cradle. Bug found on the way: the depth clear ran with depth writes off (fixed).
+- **Launch screen** (app.js #launch): Cross fades in the console's tint, the cover card in the case colour (lCardIn,
+  lFloat, the glare crossing it), the console's wordmark, title, the 1.8 s loading bar, the emulator's name, and the
+  start's messages under it (no toast); it steps aside 2.5 s after the console confirms the game, or stays with the
+  error until Circle.
+- **Verified on:** PC previews (`real-gc-1-inspect` with BOXSHELF_ISP 0/1/2 and BOXSHELF_ISP_TURN, `real-sw-4-inspect`,
+  `real-sw-4-play`), tests (data 232/0, shelf 68/0), `make app`. Not on the console.

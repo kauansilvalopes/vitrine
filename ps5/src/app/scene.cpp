@@ -331,7 +331,16 @@ void ShelfScreen::play(double now)
     if (r.app.size() != 9)
         return toast(trf("No emulator for %s on this console", tab_name(sys)), false, false, now);
     if (launcher_.start(std::move(r)))
+    {
         starting_id_ = g.id; // app.js HIST: recorded once the game is up (draw_toast)
+        launching_ = true, launch_failed_ = false;
+        launch_at_ = now, launch_end_ = -1.0;
+        launch_item_ = *it;
+        launch_note_.clear();
+        det_open_ = false, det_.set(0.0f, now);
+        if (isp_on_)
+            isp_on_ = false, isp_state_ = 0, isp_in_.set(0.0f, now), isp_lid_.set(0.0f, now), isp_out_.set(0.0f, now);
+    }
 }
 
 // .toast: a white pill sliding down from the top; a working one has a turning ring and stays, others leave.
@@ -351,7 +360,17 @@ void ShelfScreen::draw_toast(DrawList &list, double now)
     if (st.serial != launch_serial_)
     {
         launch_serial_ = st.serial;
-        toast(st.message, st.working, st.ok && !st.working, now);
+        if (launching_)
+        {
+            launch_note_ = st.message;
+            if (!st.working)
+            {
+                launch_failed_ = !st.ok;
+                launch_end_ = st.ok ? now + 2.5 : -1.0; // up: the screen steps aside; failed: it stays until Circle
+            }
+        }
+        else
+            toast(st.message, st.working, st.ok && !st.working, now);
         if (!st.working && !starting_id_.empty())
         {
             // the start is over: a confirmed one goes into the history (Home: recently played)
@@ -562,6 +581,101 @@ std::vector<std::string> ShelfScreen::meta_line(const Item &it) const
     return parts;
 }
 
+void ShelfScreen::draw_launch(GlCanvas &canvas, double now)
+{
+    if (!launching_)
+        return;
+    if (launch_end_ >= 0.0 && now > launch_end_ + .6)
+    {
+        launching_ = false;
+        return;
+    }
+    DrawList &list = canvas.list();
+    const Item &it = launch_item_;
+    const auto &st = data::style(it.system);
+    // .launch: opacity .6s in (and out when it steps aside)
+    float o = std::clamp(static_cast<float>((now - launch_at_) / .6), 0.0f, 1.0f);
+    if (launch_end_ >= 0.0 && now > launch_end_)
+        o *= 1.0f - std::clamp(static_cast<float>((now - launch_end_) / .6), 0.0f, 1.0f);
+    list.push_opacity(o);
+    // background: --l-t1, with .l-bg::after (radial vignette to t1, and t0 30% -> t1 75% from the top)
+    const Color t0 = rgb(st.tint_top), t1 = rgb(st.tint_bottom), glow = rgb(st.glow);
+    list.rounded_rect({0, 0, W, H}, 0, t1);
+    list.gradient_rect({0, 0, W, H}, 0, t0.with_alpha(.30f), t1.with_alpha(.75f));
+    list.radial_gradient({0, 0, W, H}, W * .5f, H * .4f, W * .55f, H * .5f, t0.with_alpha(.35f), t1.with_alpha(.88f), 0.0f, 1.0f);
+    // the card: min(38vh, 380px) tall, padding 5 in the case colour, radius 12, a glow; lCardIn .7s then lFloat
+    const float t = static_cast<float>(now - launch_at_);
+    static const Bezier in_ease{.2f, .8f, .2f, 1.0f};
+    const float ci = in_ease(std::clamp(t / .7f, 0.0f, 1.0f));
+    const float flt = t > .7f ? -8.0f * (.5f - .5f * std::cos((t - .7f) / 4.8f * kPi)) : 0.0f;
+    const float ch = 380.0f, cw = (ch - 10.0f) * st.ratio + 10.0f;
+    const float cs = .94f + .06f * ci, cy0 = 160.0f + 18.0f * (1.0f - ci) + flt;
+    const float cx = W * .5f - cw * cs * .5f;
+    const Rect card{cx, cy0, cw * cs, ch * cs};
+    list.push_opacity(ci);
+    list.shadow({card.x, card.y + 34, card.w, card.h}, 12, 80, Color{0, 0, 0, .55f});
+    list.glow(card, 12, 70, glow.with_alpha(.30f));
+    list.rounded_rect(card, 12, rgb(st.case_color));
+    if (const std::uint32_t cover = cover_texture(canvas, it))
+        list.image(cover, {card.x + 5 * cs, card.y + 5 * cs, card.w - 10 * cs, card.h - 10 * cs}, hui::gfx::kFullUv,
+                   Color{1, 1, 1, 1}, 8.0f);
+    // .l-glare: a 40 %-wide light crossing the card once (1.1s after .55s)
+    {
+        const float g = std::clamp((t - .55f) / 1.1f, 0.0f, 1.0f);
+        if (g > 0.0f && g < 1.0f)
+        {
+            list.push_clip(card);
+            const float gx = card.x - card.w * .6f + (card.w * 2.2f) * static_cast<float>(Bezier{.3f, .6f, .3f, 1.0f}(g));
+            list.linear_gradient({gx, card.y, card.w * .2f, card.h}, 100.0f, Color{1, 1, 1, 0}, Color{1, 1, 1, .35f}, 0.0f, 1.0f);
+            list.linear_gradient({gx + card.w * .2f, card.y, card.w * .2f, card.h}, 100.0f, Color{1, 1, 1, .35f}, Color{1, 1, 1, 0},
+                                 0.0f, 1.0f);
+            list.pop_clip();
+        }
+    }
+    list.pop_opacity();
+    // .l-word (the console's wordmark, 28px), .l-title 40px 600, .l-bar 220 x 3 filling over 1.8s, .l-emu, .l-note
+    float y = cy0 + ch + 30.0f;
+    {
+        const Wordmark wm = wordmark(it.system);
+        const std::string word = wm.upper ? upper(tr(st.word.data())) : std::string(tr(st.word.data()));
+        const float size = std::min(28.0f, wm.size);
+        const float up = std::clamp((t - .2f) / .6f, 0.0f, 1.0f);
+        list.push_opacity(up);
+        const std::size_t first = list.mark();
+        text(list, wm.face, word, W * .5f, y + 10.0f * (1.0f - up), size, kInk, Align::center, wm.spacing, size);
+        list.recolor(first, y, y + size, wm.top, wm.bottom);
+        list.pop_opacity();
+        y += size + 10.0f;
+    }
+    text(list, Face::lexend600, it.title, W * .5f, y, 40.0f, kInk, Align::center, 0.0f, 48.0f);
+    y += 48.0f + 24.0f;
+    {
+        static const Bezier load{.5f, 0.0f, .2f, 1.0f};
+        const float f = load(std::clamp(t / 1.8f, 0.0f, 1.0f));
+        list.rounded_rect({W * .5f - 110.0f, y, 220.0f, 3.0f}, 1.5f, Color{1, 1, 1, .12f});
+        list.rounded_rect({W * .5f - 110.0f, y, 220.0f * f, 3.0f}, 1.5f, kInk);
+        y += 3.0f + 18.0f;
+    }
+    const bool app = it.game.path.rfind("/appdb/", 0) == 0;
+    text(list, Face::lexend500, upper(app ? std::string(tab_name(it.system)) : std::string(emulator_name(it.system))),
+         W * .5f, y, 11.0f, kInkDim, Align::center, .26f, 14.0f);
+    y += 14.0f + 26.0f;
+    if (!launch_note_.empty())
+    {
+        text(list, Face::lexend500, launch_note_, W * .5f, y, 13.0f, launch_failed_ ? rgb(0xff8a8a) : kInkDim, Align::center,
+             0.0f, 18.0f);
+        if (launch_failed_)
+        {
+            // the Circle drawn as a shape (the fonts have no such glyph), then the words
+            const std::string back = tr("to go back");
+            const float tw = measure(Face::lexend500, back, 12.0f) + 18.0f, bx = W * .5f - tw * .5f;
+            list.ring(bx + 6.0f, y + 32.0f, 6.0f, 1.6f, rgb(0xff7a7a));
+            text(list, Face::lexend500, back, bx + 18.0f, y + 24.0f, 12.0f, kInkDim, Align::left, 0.0f, 16.0f);
+        }
+    }
+    list.pop_opacity();
+}
+
 void ShelfScreen::set_flipped(bool on, double now)
 {
     const Item *it = model_.item();
@@ -576,6 +690,12 @@ void ShelfScreen::set_flipped(bool on, double now)
 
 void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
 {
+    if (launching_)
+    {
+        if (in.is_pressed(hui::Action::back) && (launch_failed_ || launch_end_ >= 0.0))
+            launch_end_ = now;
+        return;
+    }
     if (qm_open_)
         return menu_input(in, now);
     if (det_open_)
@@ -2443,6 +2563,7 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
     }
     draw_details(canvas, now);
     draw_menu(canvas, now);
+    draw_launch(canvas, now);
     draw_toast(hud, now);
 }
 } // namespace boxshelf::app

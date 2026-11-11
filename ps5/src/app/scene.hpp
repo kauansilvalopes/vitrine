@@ -123,6 +123,8 @@ class ShelfScreen
   private:
     void toast(const std::string &message, bool working, bool done, double now);
     void draw_toast(hui::gfx::DrawList &list, double now);
+    // app.js launch screen (#launch): the game's card, its console, a loading bar, the start's messages
+    void draw_launch(GlCanvas &canvas, double now);
     // The quick menu (app.js "The quick menu", quickshelf.css): a glass panel from the right.
     struct MenuRow
     {
@@ -162,6 +164,11 @@ class ShelfScreen
     double north_down_ = -1.0, menu_down_ = -1.0;
     ShelfModel library_; // every game, in each shelf's own order; model_ is what the sort and filter leave
     std::string starting_id_; // the game being started: it goes into the history once the console confirms it
+    // the launch screen: shown from Cross until the start is over (+2.5 s when the game came up); Circle closes it
+    bool launching_ = false, launch_failed_ = false;
+    double launch_at_ = -10.0, launch_end_ = -1.0;
+    Item launch_item_;
+    std::string launch_note_;
     Settings settings_;
     bool qm_open_ = false;
     Glide qm_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};

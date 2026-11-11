@@ -111,6 +111,7 @@ constexpr Entry kTable[] = {
     {"Favorite", "Favorito", "Favorito"},
     {"Filter", "Filtrar", "Filtrar"},
     {"Turn", "Girar", "Girar"},
+    {"to go back", "para voltar", "para volver"},
     {"Zoom", "Zoom", "Zoom"},
     {"Open case", "Abrir a caixa", "Abrir la caja"},
     {"Take disc out", "Tirar o disco", "Sacar el disco"},

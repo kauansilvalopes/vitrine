@@ -521,6 +521,18 @@ int main(int argc, char **argv)
                 break;
             usleep(16000);
         }
+        if (flip == 3)
+        {
+            // Cross: the launch screen (on the PC the start answers at once: "needs the console")
+            press(screen, now, hui::Action::confirm);
+            for (int frame = 0; frame < 30; ++frame)
+            {
+                host.render(screen, now + frame * .02);
+                usleep(10000);
+            }
+            host.render(screen, now + 1.4);
+            return host.write_ppm(argv[1]) ? 0 : 3;
+        }
         if (flip == 6)
         {
             // R3, then Cross twice: the case opens and its disc comes out
