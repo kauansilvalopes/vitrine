@@ -1314,8 +1314,6 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         }
     }
 
-    DiscOp pending_disc;
-    bool has_disc = false;
     for (int i : drawn)
     {
         const auto &slot = slots_[static_cast<std::size_t>(i)];
@@ -1334,21 +1332,10 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         op.depth = lk.d;
         op.favorite = item.kind == ItemKind::game && settings_.is_favorite(item.game.id);
         op.yaw = (ry + (is_sel ? turn : 0.0f)) * kPi / 180.0f;
-        // Inspect: the selected case comes forward to the middle and turns in your hands; the others fade back
+        // Inspect: the case leaves the shelf for your hands (inspect3d.js takes over from the box)
         const float held = isp_in_.at(now);
-        if (held > 0.001f)
-        {
-            if (is_sel)
-            {
-                op.x = op.x + (kTrackX + dx - op.x) * held;
-                op.z = op.z + (bw * 1.05f * 1.45f * isp_zoom_ - op.z) * held;
-                op.yaw = op.yaw + ((isp_yaw_) * kPi / 180.0f - op.yaw) * held;
-                op.pitch = isp_pitch_ * kPi / 180.0f * held;
-                op.opening = isp_lid_.at(now);
-            }
-            else
-                alpha *= 1.0f - .9f * held;
-        }
+        if (is_sel && held > 0.001f)
+            alpha *= std::max(0.0f, 1.0f - held * 3.0f);
         op.front = cover_texture(canvas, item);
         if (is_sel && back_tex)
         {
@@ -1364,24 +1351,6 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             op.side_r = own_side.r * .8f, op.side_g = own_side.g * .8f, op.side_b = own_side.b * .8f;
         op.alpha = alpha;
         op.shade = is_sel ? 1.0f : 0.66f; // .slot:not(.sel) .dim{opacity:.34}
-        if (is_sel && held > 0.001f && isp_lid_.at(now) > 0.01f && op.front)
-        {
-            // the disc: in the tray once the case is open, then out to the right (inspect3d.js take out); its label is
-            // the game's cover
-            DiscOp disc;
-            const float out = isp_out_.at(now);
-            disc.radius = std::min(lk.w, lk.h) * .43f;
-            disc.x = op.x + out * lk.w * .95f;
-            disc.y = op.y;
-            disc.z = op.z + 2.0f + out * 60.0f;
-            disc.yaw = op.yaw * (1.0f - out);
-            disc.spin = static_cast<float>(now) * .6f * out;
-            disc.label = op.front;
-            disc.sheen = .35f;
-            disc.alpha = std::min(1.0f, isp_lid_.at(now) * 1.5f);
-            pending_disc = disc;
-            has_disc = true;
-        }
         // The front is rounded only away from the spine you see; cases right of the selection (.rside) mirror it.
         op.corner = lk.st->rc;
         op.corner_side = i > sel ? -1.0f : 1.0f;
@@ -1422,8 +1391,71 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         }
         canvas.case3d(op);
     }
-    if (has_disc)
-        canvas.disc3d(pending_disc);
+    // ---- Inspect: the shelf dims (.inspect.gl::before: rgba(3,4,8,.72)) and the case is drawn in its own pass
+    const float held = isp_in_.at(now);
+    if (held > 0.001f && sel >= 0 && sel < static_cast<int>(shelf.items.size()))
+    {
+        const Item &item = shelf.items[static_cast<std::size_t>(sel)];
+        const Look lk = look(sel);
+        const auto &cst = *lk.st;
+        canvas.list().rounded_rect({0, 0, W, H}, 0, Color{3 / 255.f, 4 / 255.f, 8 / 255.f, .72f * held});
+        InspectOp iop;
+        iop.height = 517.0f; // inspect3d.js: a case 1 unit tall, 3.9 away, 30 degree field: 48 % of the screen
+        iop.ratio = cst.ratio;
+        iop.depth = cst.depth;
+        iop.corner = cst.rc;
+        static const std::pair<data::System, float> sizes[] = {
+            {data::System::gc, .62f},  {data::System::wii, .86f},  {data::System::wiiu, .84f}, {data::System::psp, .66f},
+            {data::System::ps3, .78f}, {data::System::ps4, .78f},  {data::System::ps5, .78f},  {data::System::x360, .8f},
+            {data::System::ps2, .8f},  {data::System::sw, .5f},    {data::System::n3ds, .5f},  {data::System::psx, .8f}};
+        iop.media_size = .78f;
+        for (const auto &[sys, size] : sizes)
+            if (sys == cst.id)
+                iop.media_size = size;
+        iop.disc_lift = cst.id == data::System::gc ? .1f : 0.0f;
+        iop.edge = cst.edge + .01f;
+        iop.front = cover_texture(canvas, item);
+        const auto real = art_.find(item.game.id + "|back");
+        if (real != art_.end())
+            iop.back = canvas.texture_for(real->second->pixels.data(), static_cast<unsigned>(real->second->width),
+                                          static_cast<unsigned>(real->second->height));
+        const Color cc = rgb(cst.case_color), cs = rgb(cst.case_side);
+        iop.case_r = cc.r, iop.case_g = cc.g, iop.case_b = cc.b;
+        iop.side_r = cs.r, iop.side_g = cs.g, iop.side_b = cs.b;
+        // the inside: inspect3d.js lifts black plastic toward #2c2d33 so the moulding shows
+        Color in = cs;
+        if (in.r * .3f + in.g * .59f + in.b * .11f < .12f)
+            in = hui::gfx::mix(in, rgb(0x2c2d33), .75f);
+        iop.inner_r = in.r, iop.inner_g = in.g, iop.inner_b = in.b;
+        const float y0 = rows[static_cast<std::size_t>(sel)];
+        if (y0 >= 0.0f && canvas.spine_texture())
+        {
+            iop.spine = canvas.spine_texture();
+            iop.spine_uv[0] = 0.0f, iop.spine_uv[1] = 1.0f - (y0 + R) / AH;
+            iop.spine_uv[2] = lk.L / AW, iop.spine_uv[3] = 1.0f - y0 / AH;
+            const float ty = tile_of[static_cast<std::size_t>(sel)];
+            if (ty >= 0.0f)
+            {
+                iop.spine_band[0] = kBandX / AW, iop.spine_band[1] = 1.0f - ty / AH;
+                iop.spine_band[2] = (kBandX + R) / AW, iop.spine_band[3] = 1.0f - (ty + lk.band_h) / AH;
+                iop.spine_band_h = .09f;
+            }
+            const float shade[4] = {.15f, .14f, .2f, .45f};
+            for (int c = 0; c < 4; ++c)
+                iop.spine_shade[c] = shade[c];
+        }
+        iop.rx = isp_pitch_, iop.ry = isp_yaw_;
+        iop.lid = isp_lid_.at(now);
+        iop.out = isp_out_.at(now);
+        iop.spin = isp_spin_;
+        iop.zoom = isp_zoom_;
+        // .isp-stage entrance: scale(.84) translateY(24px), opacity 0 -> none
+        iop.scale = .84f + .16f * held;
+        iop.offset_y = 24.0f * (1.0f - held);
+        canvas.inspect3d(iop);
+        if (const std::uint32_t tex = canvas.inspect_texture())
+            canvas.list().image(tex, {0, 0, W, H}, hui::gfx::kCanvasUv, Color{1, 1, 1, held});
+    }
 }
 
 // ---- top bar ----------------------------------------------------------------------------------------------------
@@ -2117,6 +2149,11 @@ std::vector<std::pair<std::string, std::string>> ShelfScreen::info_rows(const It
 
 void ShelfScreen::inspect_input(const hui::InputFrame &in, double now, float dt)
 {
+    const bool moving = std::fabs(in.stick2_x) > .05f || std::fabs(in.stick2_y) > .05f || in.nav != hui::Direction::none;
+    if (moving)
+        isp_idle_at_ = now;
+    if (isp_state_ == 2 && now - isp_idle_at_ > 1.5)
+        isp_spin_ += dt * .22f * 3.0f;
     // right stick (or the D-pad) turns, L2 / R2 zoom; Cross: open the case, take the disc out, play; Circle: one step back
     isp_yaw_ += in.stick2_x * 160.0f * dt;
     isp_pitch_ = std::clamp(isp_pitch_ + in.stick2_y * 120.0f * dt, -45.0f, 45.0f);
@@ -2128,7 +2165,7 @@ void ShelfScreen::inspect_input(const hui::InputFrame &in, double now, float dt)
     if (in.is_pressed(hui::Action::confirm))
     {
         if (isp_state_ == 0)
-            isp_state_ = 1, isp_lid_.set(.55f, now); // about 55 degrees: the door still shows its cover
+            isp_state_ = 1, isp_lid_.set(1.0f, now); // 165 degrees, as inspect3d.js
         else if (isp_state_ == 1)
             isp_state_ = 2, isp_out_.set(1.0f, now);
         else

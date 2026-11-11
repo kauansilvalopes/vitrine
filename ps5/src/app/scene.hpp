@@ -170,7 +170,8 @@ class ShelfScreen
     bool det_open_ = false;
     bool isp_on_ = false;
     int isp_state_ = 0;                   // 0 closed, 1 open, 2 the disc out
-    float isp_yaw_ = 0.0f, isp_pitch_ = 0.0f, isp_zoom_ = 1.0f;
+    float isp_yaw_ = 0.0f, isp_pitch_ = 0.0f, isp_zoom_ = 1.0f, isp_spin_ = 0.0f;
+    double isp_idle_at_ = 0.0;
     Glide isp_in_{0.0f, 0.0f, -1.0, .6f, Bezier{.22f, .9f, .25f, 1.0f}, true};
     Glide isp_lid_{0.0f, 0.0f, -1.0, .7f, Bezier{.3f, .9f, .25f, 1.0f}, true};
     Glide isp_out_{0.0f, 0.0f, -1.0, .8f, Bezier{.3f, .9f, .25f, 1.0f}, true};

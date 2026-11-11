@@ -2,9 +2,11 @@
 #include "gl3d.hpp"
 
 #include "gfx/gl_program.hpp"
+#include "platform/ps5/system.hpp"
 
 #include <GL/glcorearb.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -548,5 +550,247 @@ void Gl3D::draw(const DiscOp &op) noexcept
     sheen_ = 0.0f;
     disc(R * 0.30f, 0, op.tint_r * 0.9f, op.tint_g * 0.9f, op.tint_b * 0.92f, 0.8f); // clear hub
     disc(R * 0.12f, 0, op.hole_r, op.hole_g, op.hole_b, 1.2f);       // hole
+}
+
+// ---- Inspect: the case in your hands (Boxshelf's inspect3d.js) -------------------------------------------------
+// An open case seen from any side needs real depth, so this pass has its own target with a depth buffer (4x MSAA,
+// resolved into a texture the 2D layer then shows over the dimmed shelf).
+
+bool Gl3D::ensure_inspect_target(int width, int height) noexcept
+{
+    if (isp_fbo_ && isp_w_ == width && isp_h_ == height)
+        return true;
+    if (!ready())
+        return false;
+    isp_w_ = width, isp_h_ = height;
+    if (!isp_tex_)
+        glGenTextures(1, &isp_tex_);
+    glBindTexture(GL_TEXTURE_2D, isp_tex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    GLint previous = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
+    if (!isp_resolve_)
+        glGenFramebuffers(1, &isp_resolve_);
+    glBindFramebuffer(GL_FRAMEBUFFER, isp_resolve_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, isp_tex_, 0);
+    GLint max_samples = 1;
+    glGetIntegerv(GL_MAX_SAMPLES, &max_samples);
+    const int samples = std::max(1, std::min(4, static_cast<int>(max_samples)));
+    if (!isp_color_)
+        glGenRenderbuffers(1, &isp_color_);
+    glBindRenderbuffer(GL_RENDERBUFFER, isp_color_);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, width, height);
+    if (!isp_depth_)
+        glGenRenderbuffers(1, &isp_depth_);
+    glBindRenderbuffer(GL_RENDERBUFFER, isp_depth_);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT24, width, height);
+    if (!isp_fbo_)
+        glGenFramebuffers(1, &isp_fbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, isp_fbo_);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, isp_color_);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, isp_depth_);
+    const bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous));
+    if (!ok)
+    {
+        hui::sys::log("[BOXSHELF] inspect target %dx%d incomplete", width, height);
+        isp_w_ = isp_h_ = 0;
+    }
+    return ok;
+}
+
+void Gl3D::draw(const InspectOp &op, int surface_width, int surface_height) noexcept
+{
+    if (!ready() || !isp_fbo_)
+        return;
+    GLint previous = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
+    glBindFramebuffer(GL_FRAMEBUFFER, isp_fbo_);
+    glViewport(0, 0, isp_w_, isp_h_);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClearDepthf(1.0f);
+    glDepthMask(GL_TRUE); // glClear only clears the depth buffer while depth writes are on (the pass ends with them off)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // inspect3d.js: a 30 degree camera 3.9 case heights away, looking at the middle of the screen
+    const float d = op.height * 3.9f, ox = 960.0f, oy = 540.0f;
+    Mat4 p{};
+    p.m[0] = 1.0f / 960.0f;
+    p.m[8] = -(ox / 960.0f - 1.0f) / d;
+    p.m[12] = -1.0f;
+    p.m[5] = -1.0f / 540.0f;
+    p.m[9] = -(1.0f - oy / 540.0f) / d;
+    p.m[13] = 1.0f;
+    p.m[10] = -1.0f / (d * 0.9f); // depth: nearer (larger z) is smaller, monotonic in front of the camera
+    p.m[11] = -1.0f / d;
+    p.m[15] = 1.0f;
+    projection_ = p;
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_CULL_FACE); // thin plates are seen from both sides
+    glUseProgram(program_);
+    glBindVertexArray(vao_);
+    glUniform1i(u_tex_, 0);
+    // lit like the room: a key light from the upper right in front, the rest ambient (three.js key + fill + rim)
+    glUniform3f(u_light_, 0.45f, -0.55f, 0.70f);
+    ambient_ = 0.58f;
+
+    const float H = op.height, w = H * op.ratio;
+    const float lt = H * std::max(.014f, op.depth * op.ratio * .18f);  // lid thickness
+    const float tb = H * .012f;                                       // back plate
+    const float D = H * std::max(.045f, op.depth * op.ratio * .55f);  // tray depth
+    const float wall = H * .011f;
+    const float R = w * op.media_size * .5f;                          // disc radius
+    const float lift = H * op.disc_lift;                              // GameCube: the hub sits above the middle
+    const float o = op.out, deg = 3.14159265f / 180.0f;
+    const Mat4 scene = mat4_multiply(mat4_translate(960.0f, 540.0f + op.offset_y, 0.0f),
+                                     mat4_multiply(mat4_scale(op.scale * op.zoom, op.scale * op.zoom, op.scale * op.zoom),
+                                                   mat4_multiply(mat4_rotate_x(-op.rx * deg), mat4_rotate_y(op.ry * deg))));
+    // disc out: the case slides away to the left and turns 30 degrees (three.js caseG)
+    const Mat4 caseM = mat4_multiply(scene, mat4_multiply(mat4_translate(-2.6f * H * o, .3f * H * o, -.6f * H * o),
+                                                          mat4_rotate_y(-30.0f * deg * o)));
+    const float a = op.alpha;
+    auto box = [&](const Mat4 &m, float cx, float cy, float cz, float sx, float sy, float sz, float r, float g, float b)
+    {
+        const Mat4 mm = mat4_multiply(m, mat4_multiply(mat4_translate(cx, cy, cz), mat4_scale(sx, sy, sz)));
+        draw_range(mm, box_front_, 6, 0, r, g, b, a, nullptr);
+        draw_range(mm, box_back_, 6, 0, r * .9f, g * .9f, b * .9f, a, nullptr);
+        draw_range(mm, box_sides_, box_sides_count_, 0, r * .85f, g * .85f, b * .85f, a, nullptr);
+    };
+    // a face: the unit box's front quad (z = +.5) at z, facing +z (or -z with `back`)
+    auto face = [&](const Mat4 &m, float cx, float cy, float cz, float sx, float sy, std::uint32_t tex, float r, float g,
+                    float b, bool back, bool flip = false)
+    {
+        Mat4 mm = mat4_multiply(m, mat4_translate(cx, cy, cz));
+        if (back)
+            mm = mat4_multiply(mm, mat4_rotate_y(3.14159265f));
+        mm = mat4_multiply(mm, mat4_multiply(mat4_scale(sx, sy, 1.0f), mat4_translate(0, 0, -.5f)));
+        flip_ = flip ? 1.0f : 0.0f;
+        draw_range(mm, box_front_, 6, tex, r, g, b, a, nullptr);
+        flip_ = 0.0f;
+    };
+    auto circle = [&](const Mat4 &m, float cx, float cy, float cz, float radius, std::uint32_t tex, float r, float g,
+                      float b, float alpha, bool back)
+    {
+        Mat4 mm = mat4_multiply(m, mat4_translate(cx, cy, cz));
+        if (back)
+            mm = mat4_multiply(mm, mat4_rotate_y(3.14159265f));
+        mm = mat4_multiply(mm, mat4_scale(radius * 2.0f, radius * 2.0f, 1.0f));
+        draw_range(mm, disc_first_, disc_count_, tex, r, g, b, a * alpha, nullptr);
+    };
+    const float sr = op.side_r, sg = op.side_g, sb = op.side_b;
+
+    // ---- the tray: back plate (its outside printed with the back), the walls, the moulded inside with the hub
+    if (o < .995f)
+    {
+        const float zb = -D * .5f + tb * .5f;
+        box(caseM, 0, 0, zb, w, H, tb, sr, sg, sb);
+        if (op.back)
+        {
+            for (int c = 0; c < 4; ++c)
+                uvrect_[c] = op.back_uv[c];
+            face(caseM, 0, 0, -D * .5f - .6f, w - 2.0f, H - 2.0f, op.back, 1, 1, 1, true, op.flip_back);
+            uvrect_[0] = uvrect_[1] = 0.0f, uvrect_[2] = uvrect_[3] = 1.0f;
+        }
+        const float floor = -D * .5f + tb;
+        face(caseM, 0, 0, floor + .3f, w - 2.0f * wall, H - 2.0f * wall, 0, op.inner_r, op.inner_g, op.inner_b, false);
+        // the cradle the disc sits in (a shallow darker round) and the hub: a collar and the push button
+        const float cyl = -lift;
+        circle(caseM, 0, cyl, floor + .6f, R * 1.035f, 0, op.inner_r * .84f, op.inner_g * .84f, op.inner_b * .84f, 1.0f, false);
+        const float hr = R * .135f;
+        circle(caseM, 0, cyl, floor + 1.5f, hr * 1.55f, 0, op.inner_r * 1.12f + .03f, op.inner_g * 1.12f + .03f,
+               op.inner_b * 1.12f + .03f, 1.0f, false);
+        circle(caseM, 0, cyl, floor + 3.0f, hr * .48f, 0, op.inner_r * .7f, op.inner_g * .7f, op.inner_b * .7f, 1.0f, false);
+        // walls: one rounded ring in Boxshelf; four slabs here, standing on the back plate up to the lid
+        const float zw = tb * .5f, Dw = D - tb;
+        box(caseM, -w * .5f + wall * .5f, 0, zw, wall, H, Dw, sr, sg, sb);
+        box(caseM, w * .5f - wall * .5f, 0, zw, wall, H, Dw, sr, sg, sb);
+        box(caseM, 0, -H * .5f + wall * .5f, zw, w - 2.0f * wall, wall, Dw, sr, sg, sb);
+        box(caseM, 0, H * .5f - wall * .5f, zw, w - 2.0f * wall, wall, Dw, sr, sg, sb);
+        // the printed spine on the hinge side, the whole thickness of tray and lid
+        if (op.spine)
+        {
+            const float sh = H - H * op.ratio * op.corner * 1.1f, sd = D + lt - .4f;
+            const Mat4 sm = mat4_multiply(caseM, mat4_multiply(mat4_translate(-.8f, 0, lt * .5f), mat4_scale(w, sh, sd)));
+            for (int c = 0; c < 4; ++c)
+                uvrect_[c] = op.spine_uv[c];
+            spine_[0] = 1.0f, spine_[1] = op.spine_band_h, spine_[2] = 0.0f;
+            for (int c = 0; c < 4; ++c)
+                band_[c] = op.spine_band[c], shade_[c] = op.spine_shade[c];
+            flip_ = 1.0f;
+            draw_range(sm, spine_first_, 6, op.spine, 1, 1, 1, a, nullptr);
+            flip_ = 0.0f;
+            spine_[0] = spine_[1] = 0.0f;
+            uvrect_[0] = uvrect_[1] = 0.0f, uvrect_[2] = uvrect_[3] = 1.0f;
+        }
+
+        // ---- the lid on its hinge at the spine edge, opening to 165 degrees
+        const Mat4 lidM = mat4_multiply(caseM, mat4_multiply(mat4_translate(-w * .5f, 0, D * .5f + lt * .5f),
+                                                             mat4_rotate_y(-165.0f * deg * op.lid)));
+        box(lidM, w * .5f, 0, 0, w, H, lt, sr, sg, sb);
+        // the printed cover (it carries the case's own border, as on the shelf)
+        shine_ = .18f;
+        face(lidM, w * .5f, 0, lt * .5f + .4f, w - 1.0f, H - 1.0f, op.front, op.front ? 1.0f : op.case_r,
+             op.front ? 1.0f : op.case_g, op.front ? 1.0f : op.case_b, false);
+        shine_ = 0.0f;
+        // inside: the plastic, the booklet in its two clips (a blank sheet when there is no manual)
+        face(lidM, w * .5f, 0, -lt * .5f - .4f, w - 4.0f, H - 4.0f, 0, op.inner_r, op.inner_g, op.inner_b, true);
+        face(lidM, w * .5f + H * .01f, 0, -lt * .5f - 2.0f, w * .8f, H * .86f, 0, 232 / 255.f, 228 / 255.f, 220 / 255.f, true);
+        for (float cy : {-.34f, .34f})
+            box(lidM, w * .5f - .4f * w + w * .035f, cy * H, -lt * .5f - 6.0f, w * .07f, H * .09f, 6.0f, op.case_r,
+                op.case_g, op.case_b);
+    }
+
+    // ---- the disc: seated on the hub, then out in front of you (bigger, spinning slowly when left alone)
+    if (op.lid > .02f || o > 0.0f)
+    {
+        const float TH = H * .0045f, floor = -D * .5f + tb;
+        const float zIn = floor + 4.0f + TH * .5f;
+        // the disc keeps the case's turn while seated; out, it squares up to face you
+        const Mat4 turn = mat4_multiply(mat4_translate(960.0f, 540.0f + op.offset_y, 0.0f),
+                                        mat4_multiply(mat4_scale(op.scale * op.zoom, op.scale * op.zoom, op.scale * op.zoom),
+                                                      mat4_multiply(mat4_rotate_x(-op.rx * deg * (1.0f - o)),
+                                                                    mat4_rotate_y(op.ry * deg * (1.0f - o)))));
+        const float ms = 1.0f + .55f * o;
+        const Mat4 discM = mat4_multiply(turn, mat4_multiply(mat4_translate(0, -lift * (1.0f - o), zIn * (1.0f - o) + .25f * H * o),
+                                                             mat4_multiply(mat4_scale(ms, ms, ms),
+                                                                           mat4_multiply(mat4_rotate_y(op.disc_turn * deg * o),
+                                                                                         mat4_rotate_z(op.spin)))));
+        // printed side: the label (the cover's art, inside the case-coloured border the shelf picture carries), the clear
+        // hub ring, the hole
+        {
+            const float ex = op.edge, ey = op.edge * op.ratio;
+            uvrect_[0] = ex, uvrect_[1] = ey, uvrect_[2] = 1.0f - ex, uvrect_[3] = 1.0f - ey;
+            circle(discM, 0, 0, TH * .5f, R, op.front, op.front ? 1.0f : .8f, op.front ? 1.0f : .82f, op.front ? 1.0f : .88f,
+                   1.0f, false);
+            uvrect_[0] = uvrect_[1] = 0.0f, uvrect_[2] = uvrect_[3] = 1.0f;
+        }
+        circle(discM, 0, 0, TH * .5f + .3f, R * .22f, 0, .78f, .8f, .86f, .85f, false);
+        circle(discM, 0, 0, TH * .5f + .6f, R * .14f, 0, op.inner_r * .5f, op.inner_g * .5f, op.inner_b * .5f, 1.0f, false);
+        // data side: silver with the bands of a real disc
+        sheen_ = .5f, spin_ = op.spin;
+        circle(discM, 0, 0, -TH * .5f, R * .985f, 0, .82f, .84f, .9f, 1.0f, true);
+        sheen_ = 0.0f;
+        circle(discM, 0, 0, -TH * .5f - .3f, R * .14f, 0, op.inner_r * .5f, op.inner_g * .5f, op.inner_b * .5f, 1.0f, true);
+    }
+
+    ambient_ = .62f;
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    // resolve the samples into the texture
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, isp_fbo_);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, isp_resolve_);
+    glBlitFramebuffer(0, 0, isp_w_, isp_h_, 0, 0, isp_w_, isp_h_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous));
+    glViewport(0, 0, surface_width, surface_height);
+    glBindVertexArray(0);
 }
 } // namespace boxshelf

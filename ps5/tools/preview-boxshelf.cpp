@@ -526,9 +526,18 @@ int main(int argc, char **argv)
             // R3, then Cross twice: the case opens and its disc comes out
             press(screen, now, hui::Action::r3);
             host.render(screen, now + 0.7);
-            press(screen, now + 0.8, hui::Action::confirm);
+            const char *steps = std::getenv("BOXSHELF_ISP"); // 0: closed, 1: the case open, 2 (default): the disc out
+            if (!steps || std::atoi(steps) >= 1)
+                press(screen, now + 0.8, hui::Action::confirm);
             host.render(screen, now + 1.6);
-            press(screen, now + 1.7, hui::Action::confirm);
+            if (!steps || std::atoi(steps) >= 2)
+                press(screen, now + 1.7, hui::Action::confirm);
+            if (const char *turn = std::getenv("BOXSHELF_ISP_TURN")) // degrees, as the right stick would
+            {
+                hui::InputFrame t;
+                t.stick2_x = 1.0f;
+                screen.input(t, now + 1.75, static_cast<float>(std::atof(turn)) / 160.0f);
+            }
             host.render(screen, now + 2.0);
             host.render(screen, now + 2.8);
             return host.write_ppm(argv[1]) ? 0 : 3;

@@ -88,9 +88,26 @@ void GlCanvas::disc3d(const DiscOp &op) noexcept
     split();
 }
 
+void GlCanvas::inspect3d(const InspectOp &op) noexcept
+{
+    if (!gl3d_.ready() || items_.size() >= max_items || !gl3d_.ensure_inspect_target(1920, 1080))
+        return;
+    Item item;
+    item.gl = &gl3d_;
+    item.kind = 4;
+    item.isp = op;
+    items_.push_back(item);
+    split();
+}
+
 void GlCanvas::run_item(void *user, int width, int height) noexcept
 {
     auto *item = static_cast<Item *>(user);
+    if (item->kind == 4)
+    {
+        item->gl->draw(item->isp, width, height);
+        return;
+    }
     if (item->kind == 2)
     {
         item->owner->render_back(width, height);

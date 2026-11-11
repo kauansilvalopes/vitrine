@@ -72,6 +72,31 @@ struct DiscOp
     float hole_r = 0.06f, hole_g = 0.065f, hole_b = 0.08f; // what shows through the centre hole
 };
 
+// Inspect (Boxshelf's inspect3d.js): one game case held in the middle of the screen, open-able, with its disc.
+struct InspectOp
+{
+    float height = 517.0f;                   // the case's height on screen (virtual pixels)
+    float ratio = .71f, depth = .1f;         // the style's width / height and depth / width
+    float corner = .03f;                     // style.rc
+    float media_size = .62f;                 // app.js MEDIA[sys].size: the disc's diameter / the case's width
+    float disc_lift = 0.0f;                  // inspect3d.js discLift(): .1 for GameCube
+    float edge = .022f;                      // style.edge: the border around the cover art (cropped off the disc label)
+    std::uint32_t front = 0, back = 0, spine = 0;
+    bool flip_back = false;
+    float back_uv[4] = {0, 0, 1, 1};
+    float spine_uv[4] = {0, 0, 1, 1}, spine_band[4] = {0, 0, 0, 0}, spine_shade[4] = {0, 0, 0, .5f};
+    float spine_band_h = 0.0f;
+    float case_r = .1f, case_g = .1f, case_b = .12f;   // caseColor
+    float side_r = .06f, side_g = .06f, side_b = .07f; // caseSide
+    float inner_r = .17f, inner_g = .18f, inner_b = .2f; // the moulded inside (dark plastic lifted, as inspect3d.js does)
+    float rx = 0.0f, ry = 0.0f;              // the turn, degrees
+    float lid = 0.0f;                        // 0 closed .. 1 open (165 degrees)
+    float out = 0.0f;                        // 0 the disc in the case .. 1 out in front
+    float spin = 0.0f;                       // the disc's own slow turn, radians
+    float disc_turn = 0.0f;                  // the turn the disc keeps once out, degrees
+    float zoom = 1.0f, scale = 1.0f, offset_y = 0.0f, alpha = 1.0f; // L2 / R2 zoom; the entrance (scale .84 -> 1)
+};
+
 class Gl3D
 {
   public:
@@ -91,6 +116,13 @@ class Gl3D
     void end() noexcept;
     void draw(const CaseOp &op) noexcept;
     void draw(const DiscOp &op) noexcept;
+    // Inspect: renders into its own target (with depth); inspect_texture() is the picture, rows bottom-up.
+    bool ensure_inspect_target(int width, int height) noexcept;
+    void draw(const InspectOp &op, int surface_width, int surface_height) noexcept;
+    std::uint32_t inspect_texture() const noexcept
+    {
+        return isp_tex_;
+    }
     bool ready() const noexcept
     {
         return program_ != 0;
@@ -114,6 +146,8 @@ class Gl3D
     float spine_[3] = {0, 0, 0}, band_[4] = {0, 0, 0, 0}, shade_[4] = {0, 0, 0, .5f}, film_ = 0.0f;
     float badge_[3] = {0, 1, 1}; // on, face width and height in virtual pixels
     int u_badge_ = -1;
+    unsigned isp_fbo_ = 0, isp_resolve_ = 0, isp_color_ = 0, isp_depth_ = 0, isp_tex_ = 0;
+    int isp_w_ = 0, isp_h_ = 0;
     int u_uvrect_ = -1, u_glare_ = -1, u_round_ = -1, u_spine_ = -1, u_band_ = -1, u_shade_ = -1, u_film_ = -1;
     int u_shine_ = -1, u_sheen_ = -1, u_spin_ = -1;
     int spine_first_ = 0, spine_right_first_ = 0;

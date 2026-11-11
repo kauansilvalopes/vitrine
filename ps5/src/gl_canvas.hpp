@@ -30,6 +30,12 @@ class GlCanvas final
     // A 3D shape drawn after everything recorded so far and before whatever is recorded next.
     void case3d(const CaseOp &op) noexcept;
     void disc3d(const DiscOp &op) noexcept;
+    // Inspect: renders the held case into its own target; inspect_texture() then shows it (kCanvasUv).
+    void inspect3d(const InspectOp &op) noexcept;
+    std::uint32_t inspect_texture() const noexcept
+    {
+        return gl3d_.inspect_texture();
+    }
     // Draws the next calls into the 640x960 back-face picture of a case (y down, same calls as the screens use);
     // end_back() queues the render. back_texture() is the picture, to be used with CaseOp::flip_back.
     void begin_back() noexcept;
@@ -99,10 +105,11 @@ class GlCanvas final
     struct Item
     {
         Gl3D *gl = nullptr;
-        int kind = 0; // 0 case, 1 disc, 2 render the back face, 3 render the spine
+        int kind = 0; // 0 case, 1 disc, 2 render the back face, 3 render the spine, 4 inspect
         GlCanvas *owner = nullptr;
         CaseOp c;
         DiscOp d;
+        InspectOp isp;
     };
     static void run_item(void *user, int width, int height) noexcept;
     void split() noexcept;
