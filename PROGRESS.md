@@ -639,3 +639,5 @@ only).
   none do.
 - The "box art matched for 332 of 232" count is fixed (a game is counted once).
 - **Verified on:** tests (data 232/0, shelf 73/0), `make app`, preview `real-ps2-3-menu`. Not yet on the console.
+- Deployed to the console (owner: "sim manda ai"): no game running, 31 files, eboot.bin 30908328 bytes listed on the
+  console. Awaiting the owner's test of "find missing".
