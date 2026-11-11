@@ -678,3 +678,12 @@ only).
     alternatives.
   - **The log** names each game left without a front ("no box art for") or a back ("no back for").
 - **Verified on:** tests (data 232/0, shelf 73/0), `make app`, PC run of the Wii U back cut. Not yet on the console.
+
+## 2026-11-10 — release ps5-v0.4.1
+
+Owner: "ja sobe essa nova versao". contentVersion 01.004.001; tests (data 232/0, shelf 73/0, list-library, preview
+smoke) and `make app` pass. Tag ps5-v0.4.1, release "Vitrine 0.4.1", Latest, `PPSA99850.zip` (31 files), SHA-256
+13f656e230a6063af31d0fa32c72da3978cbc74d86455fd11574e103abae0584.
+- **Contents:** the box art crash fix and memory trims (both run on the console), PS5SX2 backs only where the file
+  exists, LaunchBox alternatives, Wii U art from GameTDB, and the "N without box art" row.
+- **Not yet run on the console:** the last commit (a91288b: Wii U art, LaunchBox alternatives).
