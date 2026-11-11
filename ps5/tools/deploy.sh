@@ -142,7 +142,7 @@ if r.returncode != 0:
     sys.exit(f"cannot read http://{host}:6969/appdb (is Elf Arsenal running?)")
 titles = json.loads(r.stdout or b"{}").get("titles", [])
 mine = [t for t in titles if t.get("titleId") == title_id]
-if mine and mine[0].get("titleName") not in ("Boxshelf", None, ""):
+if mine and mine[0].get("titleName") not in ("Vitrine", "Boxshelf", None, ""):
     sys.exit(f"{title_id} is already used by {mine[0].get('titleName')!r}: refusing to overwrite it")
 print(f"==> [deploy] /appdb: {title_id} {'is ours' if mine else 'is free'} ({len(titles)} titles)")
 PY

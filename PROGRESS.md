@@ -600,3 +600,10 @@ it like Boxshelf".
   `demo-psp-2-inspect` with BOXSHELF_ISP 1/2, `loading`, `intro-350`), tests (data 232/0, shelf 73/0), `make app`.
   Not run on the console. The play clock in particular depends on how the console reports a closed game, which only
   the console can show.
+
+## 2026-11-10 — deployed to the console
+
+Owner: "manda para o meu ps5 a atualização". `tools/deploy.sh` now accepts the title already installed as "Vitrine"
+(it only accepted "Boxshelf"). /api/state showed no game running; `PS5_HOST=192.168.2.120 tools/deploy.sh` built and
+published 31 files to /data/homebrew/PPSA99850/ (eboot.bin and param.json last). settings.json and the caches in
+/download0 were not touched. Awaiting the owner's test on the console.
