@@ -648,3 +648,9 @@ only).
   - **Lower peaks instead:** downloads are capped at 12 MB, and art_codec skips pictures over 6 megapixels (about
     7 bytes a pixel while decoding), so the next source is tried.
   - Tests and `make app` pass. Redeploying was blocked by the permission check: the owner runs the deploy.
+- **The owner deployed 261b431; it opens.** The klog after boot shows:
+  - heap 52 MB idle, 80-92 MB while fetching, peak 106 MB of 128, no failed allocations, 60 fps.
+  - "217 games to look for (4 skipped)" and "0 titles given their proper names": the earlier start had 13 renamed and
+    106 jobs. The app's own data in /download0 (libretro lists, downloaded covers, misses) looks empty at this start,
+    so everything is fetched again. Not confirmed why: download0 is an image file (download0.dat) that Elf Arsenal
+    cannot list. The likely cause is one of the crashes.
