@@ -662,3 +662,19 @@ only).
   - **Fix:** right after loading, only the entries that match this library's jobs are kept (logged as "LaunchBox
     kept N of M"). The decode cap is 7.5 MP, so GameTDB coverfullHQ (about 3328x2048) still fits.
   - Tests and `make app` pass. Deploy is up to the owner (the permission check blocks it here).
+- **After the memory fix (owner ran the deploy):** the klog shows "LaunchBox kept 213 of 27703", heap about 39 MB
+  while fetching, a transient peak of 89 MB, no failures, no crash. On the next start the data was there (13
+  renamed, 0 to look for). So the download0 wipes came from the crashes, not from deploys or versions.
+- **Still missing (owner):** 1 front and many backs; "find missing" tried 18 and found 0.
+  - **The front** is New Super Mario Bros. U + New Super Luigi U (Wii U). GameTDB has it
+    (art.gametdb.com/wiiu/coverHQ/EN/ATWP01.jpg, .jpg not .png), but only GC/Wii used GameTDB. Wii U jobs now take
+    the product code from the folder ("[ATWP01]") for the GameTDB cover and full cover (back cut). The cut was
+    checked on the PC: a clean 774x1080 back.
+  - **The backs:** LaunchBox picks one picture per game, and some are huge scans (Barnyard NA: 3030x4281, 13 MP, 4.2
+    MB). The 7.5 MP cap rejects those, so nothing was saved. The reader now keeps the best two per game ("best|next",
+    e.g. Barnyard AU at 0.9 MP), and the fetcher tries both for fronts and backs. Sample of 20 PS1/PS2 backs: 1 over
+    7.5 MP.
+  - **Cache files** are renamed launchbox2-<key>.tsv, so the console reads LaunchBox once more, with the
+    alternatives.
+  - **The log** names each game left without a front ("no box art for") or a back ("no back for").
+- **Verified on:** tests (data 232/0, shelf 73/0), `make app`, PC run of the Wii U back cut. Not yet on the console.

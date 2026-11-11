@@ -19,10 +19,14 @@ std::string_view launchbox_platform(std::string_view system_key);
 struct LbGame
 {
     std::string id, name, norm;
-    std::string front, back;  // image file names (images.launchbox-app.com/<file>), the best region first
+    // image file names (images.launchbox-app.com/<file>): the best two, "best|next" (the next is tried when the best
+    // cannot be used, e.g. a 13-megapixel scan too big for the app's memory)
+    std::string front, back;
     std::string year, genres, developer, publisher, players, rating, esrb, overview;
     bool coop = false;
-    int front_rank = 1 << 20, back_rank = 1 << 20; // internal: the best picture seen so far
+    int front_rank = 1 << 20, back_rank = 1 << 20; // internal: the best pictures seen so far
+    int front_rank2 = 1 << 20, back_rank2 = 1 << 20;
+    std::string front2, back2;
 };
 
 // Metadata.zip, fed in order as it arrives. Keeps the games of `platforms` (LaunchBox names).

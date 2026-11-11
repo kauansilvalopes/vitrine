@@ -221,6 +221,18 @@ std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everythi
         if (!source)
             continue;
         ArtJob j{g.id, key, g.title, g.region, g.disc_id};
+        if (g.system == data::System::wiiu)
+        {
+            // a Wii U game folder carries its product code: "New Super Mario Bros. U + New Super Luigi U [ATWP01]"
+            j.disc_id.clear();
+            const auto open = g.path.rfind('[');
+            if (open != std::string::npos && open + 7 < g.path.size() && g.path[open + 7] == ']')
+            {
+                const std::string id = g.path.substr(open + 1, 6);
+                if (std::all_of(id.begin(), id.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)); }))
+                    j.disc_id = id;
+            }
+        }
         const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
         j.front = everything ? !own : !own && !exists(downloaded_cover_path(g.id));
         const bool back_here = !g.cover_back.empty() && g.cover_back != downloaded_back_path(g.id);
@@ -312,7 +324,7 @@ bool ArtFetcher::launchbox_ready(const std::vector<std::string> &systems)
     {
         if (lb_.count(k) || data::launchbox_platform(k).empty())
             continue;
-        const std::string cache = storage_root() + "/launchbox-" + k + ".tsv";
+        const std::string cache = storage_root() + "/launchbox2-" + k + ".tsv"; // 2: "best|next" pictures
         if (fresh(cache, kLaunchBoxDays))
         {
             lb_[k] = data::lb_from_tsv(read_text(cache));
@@ -349,7 +361,7 @@ bool ArtFetcher::launchbox_ready(const std::vector<std::string> &systems)
     for (const auto &k : missing)
     {
         auto &list = read[std::string(data::launchbox_platform(k))];
-        write_atomic(storage_root() + "/launchbox-" + k + ".tsv", data::lb_to_tsv(list));
+        write_atomic(storage_root() + "/launchbox2-" + k + ".tsv", data::lb_to_tsv(list));
         hui::sys::log("[BOXSHELF] art: LaunchBox %s: %zu games", k.c_str(), list.size());
         lb_[k] = std::move(list);
     }
@@ -362,6 +374,26 @@ const data::LbGame *ArtFetcher::launchbox_game(const ArtJob &job)
     return it == lb_.end() ? nullptr : data::launchbox_match(it->second, job.title);
 }
 
+namespace
+{
+// "best|next" -> {"best", "next"}
+std::vector<std::string> split_bar(const std::string &files)
+{
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (start < files.size())
+    {
+        auto bar = files.find('|', start);
+        if (bar == std::string::npos)
+            bar = files.size();
+        if (bar > start)
+            out.push_back(files.substr(start, bar - start));
+        start = bar + 1;
+    }
+    return out;
+}
+} // namespace
+
 bool ArtFetcher::fetch_back(const ArtJob &job)
 {
     // GameTDB's full cover scan (back | spine | front), the back cut by the spine's folds (Boxshelf's cutBack). The
@@ -373,6 +405,12 @@ bool ArtFetcher::fetch_back(const ArtJob &job)
         for (const auto &r : tdb_regions(job.disc_id))
             for (const char *kind : {"coverfullHQ", "coverfull"})
                 urls.push_back(std::string("https://art.gametdb.com/wii/") + kind + "/" + r + "/" + job.disc_id + ".png");
+    }
+    else if (job.system == "wiiu" && job.disc_id.size() == 6)
+    {
+        for (const auto &r : tdb_regions(job.disc_id))
+            for (const char *kind : {"coverfullHQ", "coverfull"})
+                urls.push_back(std::string("https://art.gametdb.com/wiiu/") + kind + "/" + r + "/" + job.disc_id + ".jpg");
     }
     else if ((job.system == "sw" || job.system == "n3ds") && gametdb_ready(job.system))
     {
@@ -402,11 +440,12 @@ bool ArtFetcher::fetch_back(const ArtJob &job)
         return true;
     }
     // LaunchBox's Box - Back (English-only regions first, as covers.js does)
-    if (const data::LbGame *lb = launchbox_game(job); lb && !lb->back.empty())
+    const data::LbGame *lb = launchbox_game(job);
+    for (const std::string &file : lb ? split_bar(lb->back) : std::vector<std::string>{})
     {
         std::string body, error, jpeg;
         long status = 0;
-        if (net::https_get(data::launchbox_image_url(lb->back), body, 12u << 20, &status, &error, 60000) &&
+        if (net::https_get(data::launchbox_image_url(file), body, 12u << 20, &status, &error, 60000) &&
             art_shrink_to_jpeg(reinterpret_cast<const unsigned char *>(body.data()), body.size(), 1200, append_jpeg, &jpeg))
         {
             const std::string path = downloaded_back_path(job.id);
@@ -553,12 +592,17 @@ bool ArtFetcher::fetch_one(const ArtJob &job, const std::vector<std::string> &na
             urls.push_back(data::libretro_url(job.system, hit));
     }
     // 2. LaunchBox's Box - Front (the only source with PS5 boxes)
-    if (const data::LbGame *lb = launchbox_game(job); lb && !lb->front.empty())
-        urls.push_back(data::launchbox_image_url(lb->front));
+    if (const data::LbGame *lb = launchbox_game(job))
+        for (const auto &file : split_bar(lb->front))
+            urls.push_back(data::launchbox_image_url(file));
     // 3. GameTDB HD cover by disc id (GameCube / Wii)
     if ((job.system == "gc" || job.system == "wii") && job.disc_id.size() == 6)
         for (const auto &r : tdb_regions(job.disc_id))
             urls.push_back("https://art.gametdb.com/wii/coverHQ/" + r + "/" + job.disc_id + ".png");
+    if (job.system == "wiiu" && job.disc_id.size() == 6)
+        for (const auto &r : tdb_regions(job.disc_id))
+            for (const char *kind : {"coverHQ", "cover"})
+                urls.push_back(std::string("https://art.gametdb.com/wiiu/") + kind + "/" + r + "/" + job.disc_id + ".jpg");
     // 3. GameTDB by title (Switch, 3DS: gametdb.js)
     if (!data::gametdb_art(job.system).empty() && gametdb_ready(job.system))
         for (const auto &[k, db] : tdb_)
@@ -729,14 +773,19 @@ void ArtFetcher::work()
         {
             if (fetch_back(job))
                 ++found;
-            else if (job.system == "gc" || job.system == "wii" || lb_.count(job.system) ||
-                     (!data::gametdb_art(job.system).empty() && gametdb_ready(job.system)))
-                misses[data::cover_key(job.id) + "-back"] = now; // only when a source answered
+            else
+            {
+                hui::sys::log("[BOXSHELF] art: no back for %s (%s)", job.title.c_str(), job.system.c_str());
+                if (job.system == "gc" || job.system == "wii" || lb_.count(job.system) ||
+                    (!data::gametdb_art(job.system).empty() && gametdb_ready(job.system)))
+                    misses[data::cover_key(job.id) + "-back"] = now; // only when a source answered
+            }
         }
         if (job.front && fetch_one(job, lists[job.system]))
             ++found;
         else if (job.front)
         {
+            hui::sys::log("[BOXSHELF] art: no box art for %s (%s)", job.title.c_str(), job.system.c_str());
             // a "not found" only counts when every source this system uses could be asked: a list that failed
             // to download (network, a slow site) must not keep the game waiting a week
             const bool sources_up = (!uses_libretro || !lists[job.system].empty()) || (uses_tdb && gametdb_ready(job.system));

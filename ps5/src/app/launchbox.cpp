@@ -311,20 +311,34 @@ void LaunchBoxReader::block(std::string_view text, bool image)
         int r = rank_of(kFrontRegions, region);
         const int rank = t * 100 + (r < 0 ? 99 : r);
         if (rank < g.front_rank)
-            g.front_rank = rank, g.front = file;
+            g.front_rank2 = g.front_rank, g.front2 = g.front, g.front_rank = rank, g.front = file;
+        else if (rank < g.front_rank2)
+            g.front_rank2 = rank, g.front2 = file;
     }
     else if (const int b = rank_of(kBackTypes, type); b >= 0)
     {
         int r = rank_of(kBackRegions, region);
         const int rank = b * 100 + (r < 0 ? 99 : r);
         if (rank < g.back_rank)
-            g.back_rank = rank, g.back = file;
+            g.back_rank2 = g.back_rank, g.back2 = g.back, g.back_rank = rank, g.back = file;
+        else if (rank < g.back_rank2)
+            g.back_rank2 = rank, g.back2 = file;
     }
 }
 
 std::map<std::string, std::vector<LbGame>> LaunchBoxReader::take()
 {
     by_id_.clear();
+    for (auto &[k, list] : games_)
+        for (auto &g : list)
+        {
+            if (!g.front2.empty())
+                g.front += "|" + g.front2;
+            if (!g.back2.empty())
+                g.back += "|" + g.back2;
+            g.front2.clear(), g.back2.clear();
+            g.front2.shrink_to_fit(), g.back2.shrink_to_fit();
+        }
     return std::move(games_);
 }
 
