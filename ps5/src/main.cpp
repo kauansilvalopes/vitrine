@@ -5,6 +5,7 @@
 #include "app/library_loader.hpp"
 #include "app/scene.hpp"
 #include "app/settings.hpp"
+#include "app/store.hpp"
 #include "core/input.hpp"
 #include "gl_main.hpp"
 #include "platform/ps5/pad.hpp"
@@ -108,6 +109,7 @@ int main()
     hui::sys::log("[BOXSHELF] boot PPSA99850");
     start_us = last_us = hui::sys::monotonic_us();
     // the owner's choices: the interface language (the console's when none was picked) and games moved to a shelf
+    boxshelf::app::store_init(); // /data/vitrine (store.hpp), before anything is read
     auto settings = boxshelf::app::load_settings();
     int system_language = 1;
     const int rl = sceSystemServiceParamGetInt(1, &system_language); // SCE_SYSTEM_SERVICE_PARAM_ID_LANG

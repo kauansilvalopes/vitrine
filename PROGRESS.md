@@ -712,3 +712,24 @@ smoke) and `make app` pass. Tag ps5-v0.4.1, release "Vitrine 0.4.1", Latest, `PP
   once and the allocation failed. It is now parsed while it inflates (miniz extract_to_callback, complete <game>
   blocks at a time). PC check: the same 4,861 Switch games, with a largest buffer of 38 KB instead of 25 MB.
 - Tests and `make app` pass. Not deployed.
+
+## 2026-11-11 — the store moves out of /download0 (owner: "sim faz isso")
+
+- **Why:** the console wipes the app's own download data (/download0) when the app crashes and when it is updated
+  (klog evidence above). Every update meant fetching 217 games again, and losing favourites and history.
+- **New `src/app/store.*`:** every cache and settings read/write goes through it (art_fetcher, library_loader,
+  settings, cover_loader). On the console it picks, once at boot (logged as "store: <root> (<mode>)"):
+  1. **direct:** /data/vitrine, written with POSIX calls if the app may;
+  2. **elf:** /data/vitrine through Elf Arsenal. FTP on 127.0.0.1:2121 writes (STOR <file>.part, DELE, RNFR/RNTO),
+     HTTP reads (/api/fs/download) and lists (/api/fs/list). The listings are cached per folder and updated on each
+     write;
+  3. **download0:** /download0/boxshelf as before, only if neither works.
+- **Checked from the PC against the console** (the owner allowed /data/vitrine to be created):
+  - Elf mkdir works.
+  - Elf's HTTP upload (/api/fs/upload) never answers a raw or multipart POST from the LAN. That is why FTP is used
+    to write.
+  - FTP STOR/RNFR/RNTO/DELE work there, and the file lists back through Elf.
+  - The probe file was deleted; /data/vitrine is left empty.
+- **Not migrated:** what is in /download0, which this update wipes anyway. This one update still refetches.
+- **Verified on:** tests (data 232/0, shelf 73/0), `make app`, PC preview (local mode). The elf/direct modes need
+  the console.

@@ -1,5 +1,6 @@
 // Boxshelf PS5 - cover loader. SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/cover_loader.hpp"
+#include "app/store.hpp"
 
 #include "app/art_fetcher.hpp"
 #include "app/elf_client.hpp"
@@ -234,18 +235,7 @@ void CoverLoader::work()
         {
             const std::string root = storage_root();
             if (path.compare(0, root.size(), root) == 0)
-            {
-                out.clear();
-                FILE *f = std::fopen(path.c_str(), "rb");
-                if (!f)
-                    return false;
-                char chunk[16384];
-                std::size_t n;
-                while ((n = std::fread(chunk, 1, sizeof chunk, f)) > 0 && out.size() < max)
-                    out.append(chunk, n);
-                std::fclose(f);
-                return !out.empty();
-            }
+                return store_read(path, out, max) && !out.empty();
             return elf_get(fs_url("/api/fs/download?path=", path), out, max) && !out.empty();
         };
         std::string bytes, used = req.path;

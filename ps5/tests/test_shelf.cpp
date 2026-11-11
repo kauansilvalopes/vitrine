@@ -215,6 +215,17 @@ std::string storage_root()
 {
     return "build/tests";
 }
+bool store_read(const std::string &, std::string &, std::size_t)
+{
+    return false;
+}
+bool store_write(const std::string &, const std::string &)
+{
+    return false;
+}
+void store_mkdirs(const std::string &)
+{
+}
 } // namespace boxshelf::app
 
 static void test_settings()

@@ -1,5 +1,6 @@
 // Boxshelf PS5 - box art fetcher. SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/art_fetcher.hpp"
+#include "app/store.hpp"
 
 #include "art_codec.h"
 #include "data/art_match.hpp"
@@ -26,42 +27,29 @@ namespace
 {
 constexpr long kIndexDays = 7, kMissDays = 7;
 
+// the store (store.hpp): /data/vitrine on the console
 std::string read_text(const std::string &path)
 {
     std::string out;
-    if (FILE *f = std::fopen(path.c_str(), "rb"))
-    {
-        char chunk[16384];
-        std::size_t n;
-        while ((n = std::fread(chunk, 1, sizeof chunk, f)) > 0)
-            out.append(chunk, n);
-        std::fclose(f);
-    }
+    store_read(path, out);
     return out;
 }
 
 bool write_atomic(const std::string &path, const std::string &data)
 {
-    const std::string temp = path + ".part";
-    FILE *f = std::fopen(temp.c_str(), "wb");
-    if (!f)
-        return false;
-    const bool ok = std::fwrite(data.data(), 1, data.size(), f) == data.size();
-    if (std::fclose(f) != 0 || !ok)
-    {
-        std::remove(temp.c_str());
-        return false;
-    }
-    std::remove(path.c_str());
-    return std::rename(temp.c_str(), path.c_str()) == 0;
+    return store_write(path, data);
 }
 
 bool fresh(const std::string &path, long days)
 {
-    struct stat st
-    {
-    };
-    return stat(path.c_str(), &st) == 0 && std::time(nullptr) - st.st_mtime < days * 86400;
+    long long mtime = 0;
+    return store_stat(path, nullptr, &mtime) && std::time(nullptr) - mtime < days * 86400;
+}
+
+bool present(const std::string &path)
+{
+    long long size = 0;
+    return store_stat(path, &size) && size > 0;
 }
 
 void append_jpeg(void *user, void *data, int size)
@@ -101,12 +89,7 @@ std::vector<std::string> tdb_regions(const std::string &id)
 
 std::string storage_root()
 {
-#ifdef BOXSHELF_HOST
-    const char *dir = std::getenv("BOXSHELF_DOWNLOAD0");
-    return std::string(dir ? dir : ".local/download0") + "/boxshelf";
-#else
-    return "/download0/boxshelf";
-#endif
+    return store_root();
 }
 
 std::string downloaded_cover_path(const std::string &game_id)
@@ -182,13 +165,10 @@ void apply_downloaded_art(std::vector<data::Game> &games)
 {
     for (auto &g : games)
     {
-        struct stat st
-        {
-        };
         const std::string front = downloaded_cover_path(g.id), back = downloaded_back_path(g.id);
-        if (g.cover_back.empty() && stat(back.c_str(), &st) == 0 && st.st_size > 0)
+        if (g.cover_back.empty() && present(back))
             g.cover_back = back;
-        if (g.cover_front.rfind("/data/boxshelf/covers/", 0) != 0 && stat(front.c_str(), &st) == 0 && st.st_size > 0)
+        if (g.cover_front.rfind("/data/boxshelf/covers/", 0) != 0 && present(front))
         {
             if (!g.cover_front.empty() && g.cover_front != front)
                 g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
@@ -201,13 +181,7 @@ void apply_downloaded_art(std::vector<data::Game> &games)
 std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything, bool backs)
 {
     std::vector<ArtJob> jobs;
-    auto exists = [](const std::string &path)
-    {
-        struct stat st
-        {
-        };
-        return stat(path.c_str(), &st) == 0 && st.st_size > 0;
-    };
+    auto exists = [](const std::string &path) { return present(path); };
     for (const auto &g : games)
     {
         const std::string key(data::style(g.system).key);
@@ -653,12 +627,7 @@ void ArtFetcher::work()
     const std::string root = storage_root();
     // mkdir -p: every level of root/covers
     const std::string covers = root + "/covers";
-    for (std::size_t p = covers.find('/', 1); ; p = covers.find('/', p + 1))
-    {
-        mkdir(covers.substr(0, p).c_str(), 0777);
-        if (p == std::string::npos)
-            break;
-    }
+    store_mkdirs(covers);
     // Games tried recently and not found: "<key> <unix time>" lines.
     // The list is dropped when the set of sources changes (a game missed before may be found now).
     static const std::string kMissesHeader = "# boxshelf art misses v2 (libretro, gametdb-disc, gametdb-title)\n";

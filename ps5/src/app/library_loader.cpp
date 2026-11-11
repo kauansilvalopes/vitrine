@@ -2,6 +2,7 @@
 #include "app/library_loader.hpp"
 
 #include "app/elf_client.hpp"
+#include "app/store.hpp"
 #include "data/art_match.hpp"
 #include "data/cover_index.hpp"
 
@@ -123,18 +124,22 @@ void LibraryLoader::work()
             if (found == indexes.end())
             {
                 std::vector<std::string> names;
-                if (FILE *f = std::fopen((storage_root() + "/libretro-" + key + ".txt").c_str(), "rb"))
+                std::string text;
+                if (store_read(storage_root() + "/libretro-" + key + ".txt", text))
                 {
-                    char line[512];
-                    while (std::fgets(line, sizeof line, f))
+                    std::size_t start = 0;
+                    while (start < text.size())
                     {
-                        std::string n(line);
-                        while (!n.empty() && (n.back() == '\n' || n.back() == '\r'))
+                        auto nl = text.find('\n', start);
+                        if (nl == std::string::npos)
+                            nl = text.size();
+                        std::string n = text.substr(start, nl - start);
+                        while (!n.empty() && n.back() == '\r')
                             n.pop_back();
                         if (!n.empty())
                             names.push_back(std::move(n));
+                        start = nl + 1;
                     }
-                    std::fclose(f);
                 }
                 indexes.emplace_back(key, std::move(names));
                 found = indexes.end() - 1;
@@ -187,13 +192,11 @@ void LibraryLoader::work()
                     g.system = to;
         const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
         // box art the app downloaded earlier (art_fetcher), when the PC tool sent none
-        struct stat st
-        {
-        };
+        long long size = 0;
         const std::string local = downloaded_cover_path(g.id), back = downloaded_back_path(g.id);
-        if (g.cover_back.empty() && stat(back.c_str(), &st) == 0 && st.st_size > 0)
+        if (g.cover_back.empty() && store_stat(back, &size) && size > 0)
             g.cover_back = back;
-        if (!own && stat(local.c_str(), &st) == 0 && st.st_size > 0)
+        if (!own && store_stat(local, &size) && size > 0)
         {
             if (!g.cover_front.empty())
                 g.cover_fallback = g.cover_front, g.fallback_square = g.cover_square;
