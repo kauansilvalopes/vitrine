@@ -1778,6 +1778,7 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
                 iop.media_size = size;
         iop.disc_lift = cst.id == data::System::gc ? .1f : 0.0f;
         iop.edge = cst.edge + .01f;
+        iop.umd = cst.id == data::System::psp;
         iop.cart = cst.id == data::System::sw || cst.id == data::System::sw2 || cst.id == data::System::n3ds;
         iop.front = cover_texture(canvas, item);
         const auto real = art_.find(item.game.id + "|back");

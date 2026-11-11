@@ -718,6 +718,13 @@ void Gl3D::draw(const InspectOp &op, int surface_width, int surface_height) noex
             const float cw = R * 2.0f * .9f * 1.06f;
             face(caseM, 0, cyl, floor + .6f, cw, cw * 1.1f, 0, op.inner_r * .78f, op.inner_g * .78f, op.inner_b * .78f, false);
         }
+        else if (op.umd)
+        {
+            // interiorTexture, kind umd: an oval well (R * 1.25 across, R * 1.32 tall), no hub
+            const Mat4 mm = mat4_multiply(caseM, mat4_multiply(mat4_translate(0, cyl, floor + .6f),
+                                                               mat4_scale(R * 2.5f, R * 2.64f, 1.0f)));
+            draw_range(mm, disc_first_, disc_count_, 0, op.inner_r * .8f, op.inner_g * .8f, op.inner_b * .8f, a, nullptr);
+        }
         else
         {
             // the cradle the disc sits in (a shallow darker round) and the hub: a collar and the push button
@@ -815,6 +822,19 @@ void Gl3D::draw(const InspectOp &op, int surface_width, int surface_height) noex
         circle(discM, 0, 0, -TH * .5f, R * .985f, 0, .82f, .84f, .9f, 1.0f, true);
         sheen_ = 0.0f;
         circle(discM, 0, 0, -TH * .5f - .3f, R * .14f, 0, op.inner_r * .5f, op.inner_g * .5f, op.inner_b * .5f, 1.0f, true);
+        }
+        if (op.umd)
+        {
+            // the UMD's clear shell (0xdfe6ff at .3) round the disc, 2.3 R by 2.5 R, a little low; seen through, so
+            // it does not hide what is behind it from the depth test
+            const Mat4 mm = mat4_multiply(discM, mat4_multiply(mat4_translate(0, R * .1f, 0),
+                                                               mat4_scale(R * 2.3f, R * 2.5f, H * .05f)));
+            glDepthMask(GL_FALSE);
+            const float r = 223 / 255.f, g = 230 / 255.f, b = 1.0f;
+            draw_range(mm, box_back_, 6, 0, r * .9f, g * .9f, b * .9f, a * .3f, nullptr);
+            draw_range(mm, box_sides_, box_sides_count_, 0, r * .85f, g * .85f, b * .85f, a * .3f, nullptr);
+            draw_range(mm, box_front_, 6, 0, r, g, b, a * .3f, nullptr);
+            glDepthMask(GL_TRUE);
         }
     }
 

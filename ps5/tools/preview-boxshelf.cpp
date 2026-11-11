@@ -493,6 +493,22 @@ int main(int argc, char **argv)
             }
             now += 1.2;
         }
+        else if (flip == 6)
+        {
+            // as the real-* inspect: R3, then Cross to open (BOXSHELF_ISP >= 1) and take the media out (>= 2)
+            now += 1.7;
+            host.render(screen, now);
+            press(screen, now, hui::Action::r3);
+            host.render(screen, now + 0.7);
+            const char *steps = std::getenv("BOXSHELF_ISP");
+            if (!steps || std::atoi(steps) >= 1)
+                press(screen, now + 0.8, hui::Action::confirm);
+            host.render(screen, now + 1.6);
+            if (!steps || std::atoi(steps) >= 2)
+                press(screen, now + 1.7, hui::Action::confirm);
+            host.render(screen, now + 2.0);
+            now += 2.8;
+        }
         else
             now += 1.7;
         host.render(screen, now);
