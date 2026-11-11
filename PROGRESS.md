@@ -744,3 +744,4 @@ preview smoke) and `make app` pass. Tag ps5-v0.4.2, release "Vitrine 0.4.2", Lat
 SHA-256 313e7f1f3c5efca5cff56c3960e7edd7431f3539845f6b4f6a9e692a248f9522.
 - **Contents:** the store in /data/vitrine and streamed GameTDB (Switch/3DS).
 - **Not yet seen on the console:** the reopen after the full fetch (it should ask for about 15 games, not 217).
+- Catalog PR darkxex/ps5-homebrew-catalog#1251: apps/PPSA99850.json ps5-v0.4.1 -> ps5-v0.4.2 (#1249 for 0.4.1 was merged).
