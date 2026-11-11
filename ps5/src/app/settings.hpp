@@ -25,8 +25,18 @@ struct Settings
         std::string id;
         long long last = 0; // unix seconds
         int count = 0;
+        long long ms = 0; // time played (app.js HIST ms)
     };
     std::vector<Played> history;
+    // The game started last, until the console says it closed (its time goes into history then). Kept on disk so a
+    // restart of the app still finishes it.
+    struct Session
+    {
+        std::string id, app; // the game, and the title id the console runs for it (the game's or its emulator's)
+        long long start = 0; // unix seconds
+    };
+    Session session;
+    void add_time(const std::string &game_id, long long ms);
 
     bool is_favorite(const std::string &game_id) const;
     bool toggle_favorite(const std::string &game_id); // true when it is a favourite now

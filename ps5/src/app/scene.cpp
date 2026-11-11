@@ -332,9 +332,11 @@ void ShelfScreen::play(double now)
     }
     if (r.app.size() != 9)
         return toast(trf("No emulator for %s on this console", tab_name(sys)), false, false, now);
+    const std::string app_id = r.app;
     if (launcher_.start(std::move(r)))
     {
         starting_id_ = g.id; // app.js HIST: recorded once the game is up (draw_toast)
+        starting_app_ = app_id;
         launching_ = true, launch_failed_ = false;
         launch_at_ = now, launch_end_ = -1.0;
         launch_item_ = *it;
@@ -356,8 +358,32 @@ void ShelfScreen::toast(const std::string &message, bool working, bool done, dou
     toast_until_ = working ? now + 3600.0 : now + 2.6;
 }
 
+// The game started last closed: its time goes into the history (app.js HIST ms). A session longer than 12 hours is
+// a console left on (or asleep) with the game open, and is not counted.
+void ShelfScreen::end_session(double now)
+{
+    auto &s = settings_.session;
+    if (s.id.empty())
+        return;
+    const long long secs = static_cast<long long>(std::time(nullptr)) - s.start;
+    if (secs > 0 && secs <= 12 * 3600)
+        settings_.add_time(s.id, secs * 1000);
+    s = {};
+    play_clock_.stop();
+    save_settings(settings_);
+    if (settings_.sort == "most")
+        arrange(now);
+}
+
 void ShelfScreen::draw_toast(DrawList &list, double now)
 {
+    if (!settings_.session.id.empty())
+    {
+        if (!play_clock_.watching())
+            play_clock_.watch(settings_.session.app); // a session from before the app restarted
+        else if (play_clock_.done())
+            end_session(now);
+    }
     const auto st = launcher_.status();
     if (st.serial != launch_serial_)
     {
@@ -378,7 +404,13 @@ void ShelfScreen::draw_toast(DrawList &list, double now)
             // the start is over: a confirmed one goes into the history (Home: recently played)
             if (st.ok)
             {
-                settings_.played(starting_id_, static_cast<long long>(std::time(nullptr)));
+                const auto t = static_cast<long long>(std::time(nullptr));
+                settings_.played(starting_id_, t);
+                // its play time runs until the console says it closed (play_clock_)
+                if (!settings_.session.id.empty())
+                    end_session(now);
+                settings_.session = {starting_id_, starting_app_, t};
+                play_clock_.watch(starting_app_);
                 save_settings(settings_);
                 if (settings_.filter == "played" || settings_.filter == "unplayed" || settings_.sort != "az")
                     arrange(now);
@@ -593,7 +625,7 @@ void ShelfScreen::arrange(double now)
         const auto *h = settings_.history_of(it.game.id);
         if (!h || h->count == 0)
             return -1;
-        return order == "recent" ? static_cast<double>(h->last) : h->count;
+        return order == "recent" ? static_cast<double>(h->last) : static_cast<double>(h->ms) + h->count * 1e-3;
     };
     std::vector<Shelf> out;
     for (int i = 0; i < library_.shelf_count(); ++i)
@@ -2655,10 +2687,20 @@ void ShelfScreen::draw_details(GlCanvas &canvas, double now)
             const long long days = (static_cast<long long>(std::time(nullptr)) - h->last) / 86400;
             last = days <= 0 ? tr("Today") : days == 1 ? tr("Yesterday") : trf("%s days ago", std::to_string(days));
         }
-        const std::pair<std::string, std::string> stats[] = {{tr("Last time"), last},
+        // app.js fmtPlay: "under a minute", "42 min", "2 h", "3 h 5 min"
+        std::string time = tr("Not yet");
+        if (h && h->ms > 0)
+        {
+            const long long m = (h->ms + 30000) / 60000;
+            time = m < 1 ? tr("under a minute")
+                   : m < 60 ? std::to_string(m) + " min"
+                            : std::to_string(m / 60) + " h" + (m % 60 ? " " + std::to_string(m % 60) + " min" : "");
+        }
+        const std::pair<std::string, std::string> stats[] = {{tr("Time played"), time},
+                                                             {tr("Last time"), last},
                                                              {tr("Launches"), std::to_string(h ? h->count : 0)}};
-        const float sw = (pw - 56.0f - 8.0f) * .5f;
-        for (int i = 0; i < 2; ++i)
+        const float sw = (pw - 56.0f - 16.0f) / 3.0f;
+        for (int i = 0; i < 3; ++i)
         {
             const float sx = px + 28.0f + i * (sw + 8.0f);
             list.bordered_rect({sx, y, sw, 56}, 12, Color{1, 1, 1, .05f}, 1.0f, kLine);

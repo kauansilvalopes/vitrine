@@ -192,6 +192,9 @@ class ShelfScreen
     bool art_running_ = false, art_asked_ = false;
     // Cross: Play. The launch runs on its own thread; its messages show in .toast (style.css).
     Launcher launcher_;
+    PlayClock play_clock_;
+    std::string starting_app_;
+    void end_session(double now);
     unsigned launch_serial_ = 0;
     std::string toast_;
     bool toast_work_ = false, toast_done_ = false;

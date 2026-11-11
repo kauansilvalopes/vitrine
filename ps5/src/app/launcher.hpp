@@ -58,4 +58,30 @@ class Launcher
     LaunchRequest request_;
     Status status_;
 };
+
+// Play time: while a started game is open, asks the console every 15 s (/api/state) whether it still runs; done()
+// turns true once it does not. The app itself may be asleep in the background meanwhile: the first answer after it
+// wakes up ends the session then.
+class PlayClock
+{
+  public:
+    PlayClock();
+    ~PlayClock();
+    PlayClock(const PlayClock &) = delete;
+    PlayClock &operator=(const PlayClock &) = delete;
+
+    void watch(const std::string &app); // stops watching the previous one
+    void stop();
+    bool watching() const;
+    bool done() const; // the game closed (once true, watch() again or stop())
+
+  private:
+    static void *thread_main(void *self);
+    void run();
+
+    mutable pthread_mutex_t lock_;
+    pthread_t thread_{};
+    bool joinable_ = false, quit_ = false, done_ = false;
+    std::string app_;
+};
 } // namespace boxshelf::app

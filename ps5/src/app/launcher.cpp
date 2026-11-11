@@ -283,6 +283,89 @@ bool Launcher::start(LaunchRequest request)
     return true;
 }
 
+PlayClock::PlayClock()
+{
+    pthread_mutex_init(&lock_, nullptr);
+}
+
+PlayClock::~PlayClock()
+{
+    stop();
+    pthread_mutex_destroy(&lock_);
+}
+
+void PlayClock::watch(const std::string &app)
+{
+    stop();
+    pthread_mutex_lock(&lock_);
+    app_ = app, quit_ = false, done_ = false;
+    pthread_mutex_unlock(&lock_);
+    joinable_ = pthread_create(&thread_, nullptr, &PlayClock::thread_main, this) == 0;
+}
+
+void PlayClock::stop()
+{
+    pthread_mutex_lock(&lock_);
+    quit_ = true;
+    pthread_mutex_unlock(&lock_);
+    if (joinable_)
+        pthread_join(thread_, nullptr), joinable_ = false;
+    pthread_mutex_lock(&lock_);
+    app_.clear(), done_ = false;
+    pthread_mutex_unlock(&lock_);
+}
+
+bool PlayClock::watching() const
+{
+    pthread_mutex_lock(&lock_);
+    const bool w = !app_.empty();
+    pthread_mutex_unlock(&lock_);
+    return w;
+}
+
+bool PlayClock::done() const
+{
+    pthread_mutex_lock(&lock_);
+    const bool d = done_;
+    pthread_mutex_unlock(&lock_);
+    return d;
+}
+
+void *PlayClock::thread_main(void *self)
+{
+    static_cast<PlayClock *>(self)->run();
+    return nullptr;
+}
+
+void PlayClock::run()
+{
+    pthread_mutex_lock(&lock_);
+    const std::string app = app_;
+    pthread_mutex_unlock(&lock_);
+    for (int tick = 0;; ++tick)
+    {
+        for (int i = 0; i < (tick ? 30 : 4); ++i) // 15 s between questions (2 s for the first), quit checked often
+        {
+            usleep(500000);
+            pthread_mutex_lock(&lock_);
+            const bool quit = quit_;
+            pthread_mutex_unlock(&lock_);
+            if (quit)
+                return;
+        }
+        std::string active;
+        bool running = false;
+        if (!running_title(active, running))
+            continue; // no answer: ask again later
+        if (running && active == app)
+            continue;
+        pthread_mutex_lock(&lock_);
+        done_ = true;
+        pthread_mutex_unlock(&lock_);
+        return;
+    }
+}
+
 bool Launcher::busy() const
 {
     pthread_mutex_lock(&lock_);

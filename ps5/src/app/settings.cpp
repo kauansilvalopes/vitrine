@@ -65,6 +65,16 @@ void Settings::played(const std::string &game_id, long long when)
     history.push_back({game_id, when, 1});
 }
 
+void Settings::add_time(const std::string &game_id, long long ms)
+{
+    for (auto &h : history)
+        if (h.id == game_id)
+        {
+            h.ms += ms;
+            return;
+        }
+}
+
 const Settings::Played *Settings::history_of(const std::string &game_id) const
 {
     for (const auto &h : history)
@@ -97,6 +107,15 @@ std::string Settings::to_json() const
         cJSON *e = cJSON_AddObjectToObject(h, p.id.c_str());
         cJSON_AddNumberToObject(e, "last", static_cast<double>(p.last));
         cJSON_AddNumberToObject(e, "count", p.count);
+        if (p.ms > 0)
+            cJSON_AddNumberToObject(e, "ms", static_cast<double>(p.ms));
+    }
+    if (!session.id.empty())
+    {
+        cJSON *ss = cJSON_AddObjectToObject(root, "session");
+        cJSON_AddStringToObject(ss, "id", session.id.c_str());
+        cJSON_AddStringToObject(ss, "app", session.app.c_str());
+        cJSON_AddNumberToObject(ss, "start", static_cast<double>(session.start));
     }
     char *text = cJSON_Print(root);
     std::string out = text ? text : "{}";
@@ -136,8 +155,17 @@ Settings Settings::from_json(const std::string &json)
             continue;
         const cJSON *last = cJSON_GetObjectItemCaseSensitive(e, "last");
         const cJSON *count = cJSON_GetObjectItemCaseSensitive(e, "count");
+        const cJSON *ms = cJSON_GetObjectItemCaseSensitive(e, "ms");
         s.history.push_back({e->string, cJSON_IsNumber(last) ? static_cast<long long>(last->valuedouble) : 0,
-                             cJSON_IsNumber(count) ? count->valueint : 0});
+                             cJSON_IsNumber(count) ? count->valueint : 0,
+                             cJSON_IsNumber(ms) ? static_cast<long long>(ms->valuedouble) : 0});
+    }
+    if (const cJSON *ss = cJSON_GetObjectItemCaseSensitive(root, "session"); cJSON_IsObject(ss))
+    {
+        const cJSON *id = cJSON_GetObjectItemCaseSensitive(ss, "id"), *app = cJSON_GetObjectItemCaseSensitive(ss, "app"),
+                    *start = cJSON_GetObjectItemCaseSensitive(ss, "start");
+        if (cJSON_IsString(id) && cJSON_IsString(app) && cJSON_IsNumber(start))
+            s.session = {id->valuestring, app->valuestring, static_cast<long long>(start->valuedouble)};
     }
     cJSON_Delete(root);
     return s;

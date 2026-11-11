@@ -2,6 +2,7 @@
 #include "app/clock.hpp"
 #include "app/css.hpp"
 #include "app/i18n.hpp"
+#include "app/settings.hpp"
 #include "app/shelf.hpp"
 
 #include <cmath>
@@ -207,8 +208,39 @@ static void test_home()
     CHECK(m.shelf_count() == 2 && m.cur().system == System::ps2 && m.selected() == 1);
 }
 
+// settings.cpp keeps its file under the art fetcher's folder; the round trip below never touches the disk
+namespace boxshelf::app
+{
+std::string storage_root()
+{
+    return "build/tests";
+}
+} // namespace boxshelf::app
+
+static void test_settings()
+{
+    Settings s;
+    s.hidden = {"gc:a", "ps2:b"};
+    s.played("gc:a", 1000);
+    s.played("gc:a", 2000);
+    s.add_time("gc:a", 90000);
+    s.add_time("gc:a", 30000);
+    s.add_time("nobody", 5); // never started: nothing to add to
+    s.session = {"ps2:b", "PPSA99841", 3000};
+    const Settings r = Settings::from_json(s.to_json());
+    CHECK(r.hidden.size() == 2 && r.hidden[1] == "ps2:b");
+    const auto *h = r.history_of("gc:a");
+    CHECK(h && h->count == 2 && h->last == 2000 && h->ms == 120000);
+    CHECK(!r.history_of("nobody"));
+    CHECK(r.session.id == "ps2:b" && r.session.app == "PPSA99841" && r.session.start == 3000);
+    // an old settings.json (no ms, no session) still reads
+    const Settings old = Settings::from_json(R"({"history":{"x":{"last":5,"count":1}}})");
+    CHECK(old.history_of("x") && old.history_of("x")->ms == 0 && old.session.id.empty() && old.hidden.empty());
+}
+
 int main()
 {
+    test_settings();
     test_home();
     test_move();
     test_clock();
