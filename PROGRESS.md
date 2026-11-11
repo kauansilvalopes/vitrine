@@ -733,3 +733,14 @@ smoke) and `make app` pass. Tag ps5-v0.4.1, release "Vitrine 0.4.1", Latest, `PP
 - **Not migrated:** what is in /download0, which this update wipes anyway. This one update still refetches.
 - **Verified on:** tests (data 232/0, shelf 73/0), `make app`, PC preview (local mode). The elf/direct modes need
   the console.
+- **On the console (owner deployed cb496d5):** the klog shows "store: /data/vitrine (direct)", so the app may write
+  /data itself. LaunchBox caches, libretro lists and covers were landing there during the run: 67 files after a few
+  minutes. No crash; heap 60 MB, peak 84 MB.
+
+## 2026-11-11 — release ps5-v0.4.2
+
+Owner: "sobe a nova att e ja abre o PR". contentVersion 01.004.002; tests (data 232/0, shelf 73/0, list-library,
+preview smoke) and `make app` pass. Tag ps5-v0.4.2, release "Vitrine 0.4.2", Latest, `PPSA99850.zip` (31 files),
+SHA-256 313e7f1f3c5efca5cff56c3960e7edd7431f3539845f6b4f6a9e692a248f9522.
+- **Contents:** the store in /data/vitrine and streamed GameTDB (Switch/3DS).
+- **Not yet seen on the console:** the reopen after the full fetch (it should ask for about 15 games, not 217).
