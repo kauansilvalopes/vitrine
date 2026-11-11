@@ -4,7 +4,7 @@
 //
 // Adapted from ps5-opengl native-app/app_heap.c. tools/build.sh links with
 // --wrap for the malloc family whenever this file exists, routing allocations
-// into a fixed 512 MiB sceLibcMspace that is never unmapped. When it is full, an allocation falls back to the
+// into a fixed 128 MiB sceLibcMspace (512 MiB left the console's app without memory for its shaders) that is never unmapped. When it is full, an allocation falls back to the
 // system's malloc instead of failing (a failed operator new traps: the app would crash).
 
 #include <errno.h>
@@ -33,7 +33,7 @@ int sceLibcMspacePosixMemalign(void *mspace, void **address, size_t alignment, s
 size_t sceLibcMspaceMallocUsableSize(const void *address);
 
 /* Fixed, process-lifetime heap: do not unmap underneath late C++ destructors. */
-#define HUI_HEAP_SIZE (512u * 1024u * 1024u)
+#define HUI_HEAP_SIZE (128u * 1024u * 1024u)
 
 static atomic_int hui_heap_state;
 static void *hui_heap_base;

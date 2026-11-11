@@ -69,9 +69,12 @@ static int encode_region(const unsigned char *rgba, int w, int h, int x0, int cw
 static unsigned char *decode(const unsigned char *bytes, size_t length, int *w, int *h)
 {
     int channels = 0;
-    if (!bytes || length == 0 || length > (24u << 20))
+    if (!bytes || length == 0 || length > (12u << 20))
         return 0;
-    if (!stbi_info_from_memory(bytes, (int)length, w, h, &channels) || *w <= 0 || *h <= 0 || *w > 4096 || *h > 4096)
+    // The app heap is 128 MB: a decode takes about 7 bytes a pixel while it runs (the RGBA result and stb's
+    // component buffers), so pictures over 6 megapixels are left alone (the next source is tried instead).
+    if (!stbi_info_from_memory(bytes, (int)length, w, h, &channels) || *w <= 0 || *h <= 0 || *w > 4096 || *h > 4096 ||
+        (long long)*w * *h > 6000000LL)
         return 0;
     return stbi_load_from_memory(bytes, (int)length, w, h, &channels, 4);
 }

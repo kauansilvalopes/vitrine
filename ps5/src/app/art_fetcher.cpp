@@ -388,7 +388,7 @@ bool ArtFetcher::fetch_back(const ArtJob &job)
     {
         std::string body, error, jpeg;
         long status = 0;
-        if (!net::https_get(url, body, 24u << 20, &status, &error, 60000))
+        if (!net::https_get(url, body, 12u << 20, &status, &error, 60000))
             continue;
         if (!art_back_to_jpeg(reinterpret_cast<const unsigned char *>(body.data()), body.size(), front, spine, 1200,
                               append_jpeg, &jpeg))
@@ -406,7 +406,7 @@ bool ArtFetcher::fetch_back(const ArtJob &job)
     {
         std::string body, error, jpeg;
         long status = 0;
-        if (net::https_get(data::launchbox_image_url(lb->back), body, 24u << 20, &status, &error, 60000) &&
+        if (net::https_get(data::launchbox_image_url(lb->back), body, 12u << 20, &status, &error, 60000) &&
             art_shrink_to_jpeg(reinterpret_cast<const unsigned char *>(body.data()), body.size(), 1200, append_jpeg, &jpeg))
         {
             const std::string path = downloaded_back_path(job.id);
@@ -461,7 +461,7 @@ std::vector<std::string> ArtFetcher::libretro_names(const std::string &system)
     std::string html, error;
     const std::string url = data::libretro_url(system, "x");
     const std::string index = url.substr(0, url.rfind('/') + 1); // ".../Named_Boxarts/"
-    if (!net::https_get(index, html, 24u << 20, nullptr, &error, 60000))
+    if (!net::https_get(index, html, 12u << 20, nullptr, &error, 60000))
     {
         hui::sys::log("[BOXSHELF] art: libretro %s index failed: %s", system.c_str(), error.c_str());
         return names;
@@ -569,7 +569,7 @@ bool ArtFetcher::fetch_one(const ArtJob &job, const std::vector<std::string> &na
     {
         std::string body, error, jpeg;
         long status = 0;
-        if (!net::https_get(url, body, 24u << 20, &status, &error, 60000))
+        if (!net::https_get(url, body, 12u << 20, &status, &error, 60000))
             continue;
         if (!art_shrink_to_jpeg(reinterpret_cast<const unsigned char *>(body.data()), body.size(), 1200, append_jpeg,
                                 &jpeg))

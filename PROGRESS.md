@@ -641,3 +641,10 @@ only).
 - **Verified on:** tests (data 232/0, shelf 73/0), `make app`, preview `real-ps2-3-menu`. Not yet on the console.
 - Deployed to the console (owner: "sim manda ai"): no game running, 31 files, eboot.bin 30908328 bytes listed on the
   console. Awaiting the owner's test of "find missing".
+- **The 512 MB heap broke start-up on the console:** klog SIGILL, `operator new` failing in the shader compiler
+  (aco, under GlBatch::init) right after "library: 11 roots listed". The console's app has no room for a 512 MB
+  mspace plus the GL driver.
+  - **Fix:** the heap is back to 128 MB, keeping the system-malloc fallback.
+  - **Lower peaks instead:** downloads are capped at 12 MB, and art_codec skips pictures over 6 megapixels (about
+    7 bytes a pixel while decoding), so the next source is tried.
+  - Tests and `make app` pass. Redeploying was blocked by the permission check: the owner runs the deploy.
