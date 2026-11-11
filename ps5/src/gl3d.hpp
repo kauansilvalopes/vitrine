@@ -56,6 +56,8 @@ struct CaseOp
     float film = 0.0f;                       // .f-front::after film strength (1 selected, .55 others)
     float back_uv[4] = {0, 0, 1, 1};         // the part of `back` this case shows
     bool favorite = false;                   // style.css .slot.fav .f-front::before: the heart badge
+    float front_uv[4] = {0, 0, 1, 1};        // the part of `front` this case shows (a cell of the fronts atlas)
+    bool front_flip = false;                 // `front` was rendered into a framebuffer (rows upside down)
 };
 
 // A disc: label picture on the face, silver rim, hub and hole.
@@ -111,6 +113,13 @@ class Gl3D
         camera_x_ = origin_x;
         camera_y_ = origin_y;
     }
+    // A 2D transform of the whole projected picture (CSS transform on the element that holds the perspective):
+    // scaled about the screen's centre, then moved by shift_x virtual pixels. #scene{transform:translateX(..) scale(..)}
+    void set_view(float scale, float shift_x) noexcept
+    {
+        view_scale_ = scale;
+        view_shift_ = shift_x;
+    }
     // Called once per frame by the renderer's custom layer: sets the state the passes need.
     void begin(int surface_width, int surface_height) noexcept;
     // Restores the state the 2D batch expects (culling off).
@@ -139,6 +148,7 @@ class Gl3D
 
     unsigned program_ = 0, vao_ = 0, buffer_ = 0;
     float camera_distance_ = 2015.2846f, camera_x_ = 960.0f, camera_y_ = 540.0f;
+    float view_scale_ = 1.0f, view_shift_ = 0.0f;
     int surface_width_ = 1920, surface_height_ = 1080;
     Mat4 projection_{};
     // uniform locations

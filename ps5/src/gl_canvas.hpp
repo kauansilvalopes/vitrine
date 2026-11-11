@@ -54,10 +54,22 @@ class GlCanvas final
         return spine_target_.texture();
     }
     static constexpr int spine_width = 1152, spine_height = 1600;
+    // And for the made-up fronts (covers.js drawFront: the title over the wash): one cell per coverless case.
+    void begin_fronts() noexcept;
+    void end_fronts() noexcept;
+    std::uint32_t fronts_texture() const noexcept
+    {
+        return fronts_target_.texture();
+    }
+    static constexpr int fronts_width = 2560, fronts_height = 2304;
     // CSS perspective for the 3D items of this frame (see Gl3D::set_camera).
     void set_camera(float distance, float origin_x, float origin_y) noexcept
     {
         gl3d_.set_camera(distance, origin_x, origin_y);
+    }
+    void set_view(float scale, float shift_x) noexcept
+    {
+        gl3d_.set_view(scale, shift_x);
     }
     bool has_3d() const noexcept
     {
@@ -105,7 +117,7 @@ class GlCanvas final
     struct Item
     {
         Gl3D *gl = nullptr;
-        int kind = 0; // 0 case, 1 disc, 2 render the back face, 3 render the spine, 4 inspect
+        int kind = 0; // 0 case, 1 disc, 2 render the back face, 3 render the spine, 4 inspect, 5 render the fronts
         GlCanvas *owner = nullptr;
         CaseOp c;
         DiscOp d;
@@ -115,6 +127,7 @@ class GlCanvas final
     void split() noexcept;
     void render_back(int width, int height) noexcept;
     void render_spine(int width, int height) noexcept;
+    void render_fronts(int width, int height) noexcept;
     void render_to(hui::gfx::Canvas &target, hui::gfx::DrawList &list, int w, int h, int width, int height) noexcept;
 
     // The shelf draws up to ~17 cases, each with its floor reflection, plus the selected one's parts.
@@ -123,8 +136,8 @@ class GlCanvas final
     std::vector<Item> items_;
     std::size_t segment_ = 0;
     Gl3D gl3d_;
-    hui::gfx::Canvas back_target_, spine_target_;
-    hui::gfx::DrawList spine_list_;
+    hui::gfx::Canvas back_target_, spine_target_, fronts_target_;
+    hui::gfx::DrawList spine_list_, fronts_list_;
     hui::gfx::DrawList back_list_;
     hui::gfx::DrawList *saved_list_ = nullptr;
     bool gl3d_tried_ = false;

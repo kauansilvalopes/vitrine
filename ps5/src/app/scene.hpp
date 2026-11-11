@@ -79,7 +79,7 @@ class ShelfScreen
     void draw_hints(hui::gfx::DrawList &list);
     void draw_letter_flash(hui::gfx::DrawList &list, double now);
     void draw_empty(hui::gfx::DrawList &list);
-    std::uint32_t cover_texture(GlCanvas &canvas, const Item &item);
+    std::uint32_t cover_texture(GlCanvas &canvas, const Item &item, bool *made_up = nullptr);
     // covers.js drawBack(): the made-up back of a game with no back art, drawn into r of the current list.
     void draw_made_up_back(hui::gfx::DrawList &list, const Item &item, const hui::gfx::Rect &r);
     void set_flipped(bool on, double now);

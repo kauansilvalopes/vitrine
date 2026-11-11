@@ -1206,8 +1206,10 @@ void ShelfScreen::update_covers(GlCanvas &canvas)
     }
 }
 
-std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item)
+std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item, bool *made_up)
 {
+    if (made_up)
+        *made_up = false;
     if (item.kind == ItemKind::game && !item.game.id.empty())
     {
         const auto it = art_.find(item.game.id);
@@ -1256,6 +1258,8 @@ std::uint32_t ShelfScreen::cover_texture(GlCanvas &canvas, const Item &item)
     }
     const int w = cover_size_[key];
     const int h = static_cast<int>(it->second.size()) / w;
+    if (made_up)
+        *made_up = item.kind == ItemKind::game;
     return canvas.texture_for(it->second.data(), static_cast<unsigned>(w), static_cast<unsigned>(h));
 }
 
@@ -1421,9 +1425,10 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     const auto size = data::case_size(st, W, H);
     const float bw = size.w, bh = size.h, bd = size.d;
     const int sel = model_.selected();
-    // #app.qm-open #scene{transform:translateX(-17vw) ...}: the cases and the camera move together
-    const float dx = -.17f * W * aside(now);
-    canvas.set_camera(kPerspective, kTrackX + dx, kTrackY);
+    // #app.qm-open #scene{transform:translateX(-17vw) scale(.92)}: the cases and the camera move together
+    const float away = aside(now);
+    canvas.set_camera(kPerspective, kTrackX, kTrackY);
+    canvas.set_view(1.0f - .08f * away, -.17f * W * away);
     update_covers(canvas);
 
     // Back to front: the farthest cases first, the selected one last.
@@ -1540,6 +1545,90 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
     }
     canvas.end_spine();
 
+    // ---- made-up fronts (covers.js drawFront): the wash above with the title over it, a cell per coverless case
+    struct FrontCell
+    {
+        std::uint32_t tex = 0;
+        float uv[4] = {0, 0, 1, 1};
+        bool cell = false;
+    };
+    std::vector<FrontCell> fronts(slots_.size());
+    {
+        constexpr float CW = 320.0f, CH = 460.0f;
+        const float TW = static_cast<float>(GlCanvas::fronts_width), TH = static_cast<float>(GlCanvas::fronts_height);
+        const int cols = static_cast<int>(TW / CW), cells = cols * static_cast<int>(TH / CH);
+        static constexpr Face kTitleFaces[3] = {Face::lexend800, Face::bungee400, Face::audiowide400};
+        bool any = false;
+        int used = 0;
+        for (int i : drawn)
+        {
+            const Item &item = shelf.items[static_cast<std::size_t>(i)];
+            bool made_up = false;
+            const std::uint32_t tex = cover_texture(canvas, item, &made_up);
+            fronts[static_cast<std::size_t>(i)].tex = tex;
+            if (!made_up || !tex || used >= cells || !canvas.fronts_texture())
+                continue;
+            if (!any)
+                canvas.begin_fronts(), any = true;
+            DrawList &fl = canvas.list();
+            const Look lk = look(i);
+            const float cx = CW * static_cast<float>(used % cols), cy = CH * static_cast<float>(used / cols);
+            ++used;
+            float dw = CW, dh = CW * lk.h / lk.w;
+            if (dh > CH)
+                dh = CH, dw = CH * lk.w / lk.h;
+            fl.push_clip({cx, cy, dw, dh});
+            fl.image(tex, {cx, cy, dw, dh}, hui::gfx::kFullUv, Color{1, 1, 1, 1});
+            // the inner picture (inside the case's border), the band on top of it
+            const auto &cst = data::style(item.system);
+            int ix, iy, iw, ih;
+            frame_inner(item.system, static_cast<int>(dw), static_cast<int>(dh), ix, iy, iw, ih);
+            const float W2 = static_cast<float>(iw), H2 = static_cast<float>(ih);
+            const float band_h = cst.has_band ? std::round(H2 * .085f) : 0.0f;
+            // the font shrinks (x.92) until the title fits in 4 lines, each at most 90 % of the width
+            const Face tf = kTitleFaces[item.seed % 3];
+            const std::string up = upper(item.title);
+            float size = W2 * .13f;
+            std::vector<std::string> lines;
+            for (;;)
+            {
+                lines = wrap_lines(tf, up, size, W2 * .84f);
+                bool wide = false;
+                for (const auto &l : lines)
+                    wide = wide || measure(tf, l, size) > W2 * .9f;
+                if ((lines.size() <= 4 && !wide) || size * .92f <= 12.0f * W2 / 420.0f)
+                    break;
+                size *= .92f;
+            }
+            const float lh = size * 1.04f, ty = cy + static_cast<float>(iy) + band_h + H2 * .08f;
+            const float mid = cx + static_cast<float>(ix) + W2 * .5f;
+            const float hue = static_cast<float>(item.hue);
+            const Color stroke = hsl(hue + 200, 60, 12);
+            const float o = size * .07f;
+            for (std::size_t k = 0; k < lines.size(); ++k)
+            {
+                const float yy = ty + static_cast<float>(k) * lh + size * .8f;
+                const float x = mid - measure(tf, lines[k], size) * .5f;
+                // strokeText (lineWidth size*.16, round joins): the line drawn around itself in the dark ink
+                for (int a = 0; a < 8; ++a)
+                {
+                    const float ang = static_cast<float>(a) * kPi * .25f;
+                    text_at_baseline(fl, tf, lines[k], x + std::cos(ang) * o, yy + std::sin(ang) * o, size, stroke);
+                }
+                // fillText with a gradient from white to hsl(hue + 50, 95 %, 78 %) down the line
+                const std::size_t first = fl.mark();
+                text_at_baseline(fl, tf, lines[k], x, yy, size, Color{1, 1, 1, 1});
+                fl.recolor(first, yy - size, yy, Color{1, 1, 1, 1}, hsl(hue + 50, 95, 78));
+            }
+            fl.pop_clip();
+            auto &f = fronts[static_cast<std::size_t>(i)];
+            f.tex = canvas.fronts_texture(), f.cell = true;
+            f.uv[0] = cx / TW, f.uv[1] = 1.0f - (cy + dh) / TH, f.uv[2] = (cx + dw) / TW, f.uv[3] = 1.0f - cy / TH;
+        }
+        if (any)
+            canvas.end_fronts();
+    }
+
     // .sheen::after: 42 % of the face wide, from left -70 %, translateX(488 %) over .85 s cubic-bezier(.3,.6,.3,1),
     // 380 ms after the selection lands.
     static const Bezier sheen_ease{.3f, .6f, .3f, 1.0f};
@@ -1593,7 +1682,7 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         const Look lk = look(i);
         const float L = lk.L, band_h = lk.band_h;
         CaseOp op;
-        op.x = kTrackX + dx + x;
+        op.x = kTrackX + x;
         op.y = kTrackY;
         op.z = z;
         op.width = lk.w;
@@ -1605,7 +1694,13 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         const float held = isp_in_.at(now);
         if (is_sel && held > 0.001f)
             alpha *= std::max(0.0f, 1.0f - held * 3.0f);
-        op.front = cover_texture(canvas, item);
+        {
+            const auto &f = fronts[static_cast<std::size_t>(i)];
+            op.front = f.tex;
+            op.front_flip = f.cell;
+            for (int c = 0; c < 4; ++c)
+                op.front_uv[c] = f.uv[c];
+        }
         if (is_sel && back_tex)
         {
             op.back = back_tex;
@@ -2835,7 +2930,8 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
         return;
     }
     const float away = aside(now), dx = -.17f * W * away;
-    canvas.list().push_transform(1.0f, 0.0f, 0.0f, dx, 0.0f);
+    // the floor and the .sel-halo go with #scene: translate(-17vw) scale(.92) about the middle
+    canvas.list().push_transform(1.0f - .08f * away, W * .5f, H * .5f, dx, 0.0f);
     draw_floor_and_halo(canvas.list(), now);
     canvas.list().pop_transform();
     draw_cases(canvas, now);

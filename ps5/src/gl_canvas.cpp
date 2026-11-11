@@ -49,6 +49,7 @@ void GlCanvas::begin(hui::gfx::GlBatch *batch, const hui::gfx::Font *font, std::
         {
             back_target_.create(back_width, back_height, 1);
             spine_target_.create(spine_width, spine_height, 1);
+            fronts_target_.create(fronts_width, fronts_height, 1);
         }
     }
     items_.clear();
@@ -118,6 +119,11 @@ void GlCanvas::run_item(void *user, int width, int height) noexcept
         item->owner->render_spine(width, height);
         return;
     }
+    if (item->kind == 5)
+    {
+        item->owner->render_fronts(width, height);
+        return;
+    }
     item->gl->begin(width, height);
     if (item->kind == 0)
         item->gl->draw(item->c);
@@ -168,6 +174,31 @@ void GlCanvas::render_back(int width, int height) noexcept
 void GlCanvas::render_spine(int width, int height) noexcept
 {
     render_to(spine_target_, spine_list_, spine_width, spine_height, width, height);
+}
+
+void GlCanvas::render_fronts(int width, int height) noexcept
+{
+    render_to(fronts_target_, fronts_list_, fronts_width, fronts_height, width, height);
+}
+
+void GlCanvas::begin_fronts() noexcept
+{
+    saved_list_ = list_;
+    fronts_list_.clear();
+    list_ = &fronts_list_;
+}
+
+void GlCanvas::end_fronts() noexcept
+{
+    list_ = saved_list_;
+    if (!gl3d_.ready() || items_.size() >= max_items)
+        return;
+    Item item;
+    item.gl = &gl3d_;
+    item.kind = 5;
+    item.owner = this;
+    items_.push_back(item);
+    split();
 }
 
 void GlCanvas::begin_spine() noexcept

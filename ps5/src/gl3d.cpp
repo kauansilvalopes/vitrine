@@ -370,6 +370,10 @@ void Gl3D::begin(int surface_width, int surface_height) noexcept
     p.m[13] = 1.0f;
     p.m[11] = -1.0f / d;                       // z -> w
     p.m[15] = 1.0f;
+    // set_view: clip' = clip * s + (shift in NDC) * w, about the screen's centre (NDC 0)
+    const float s = view_scale_, t = view_shift_ / 960.0f;
+    p.m[0] *= s, p.m[8] = p.m[8] * s + t * p.m[11], p.m[12] = p.m[12] * s + t * p.m[15];
+    p.m[5] *= s, p.m[9] *= s, p.m[13] *= s;
     projection_ = p;
     glViewport(0, 0, surface_width, surface_height);
     glEnable(GL_BLEND);
@@ -514,6 +518,9 @@ void Gl3D::draw(const CaseOp &op) noexcept
         round_[1] = op.corner_side;
         film_ = op.reflection ? 0.0f : op.film;
         badge_[0] = op.favorite && !op.reflection ? 1.0f : 0.0f, badge_[1] = w, badge_[2] = h;
+        flip_ = op.front_flip ? 1.0f : 0.0f;
+        for (int c = 0; c < 4; ++c)
+            uvrect_[c] = op.front_uv[c];
         if (op.front)
             draw_range(door, box_front_, 6, op.front, kf, kf, kf, a, fade);
         else
@@ -521,6 +528,8 @@ void Gl3D::draw(const CaseOp &op) noexcept
                        fade);
     }
     shine_ = 0.0f;
+    flip_ = 0.0f;
+    uvrect_[0] = uvrect_[1] = 0.0f, uvrect_[2] = uvrect_[3] = 1.0f;
     glare_[0] = 0.5f, glare_[1] = 0.0f, glare_[2] = 1.0f, glare_[3] = -9.0f;
     round_[0] = round_[1] = 0.0f;
     film_ = 0.0f;
