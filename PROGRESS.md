@@ -575,3 +575,28 @@ it like Boxshelf".
 - **Verified on:** PC host run of the streamed fetch (about 30 s from LaunchBox's server, 213 of 231 library games
   matched, PS5 boxes downloaded), previews `real-ps5-1-details` and `real-gc-1-menu`, tests (data 232/0, shelf 68/0),
   `make app`. Not on the console.
+
+## 2026-11-10 (night, later) — play time, visual finish
+
+- **Play time** (5539337): a session opens when the console confirms a game. A thread asks /api/state every 15 s, and
+  the session closes once the game is no longer running. It is kept in settings.json, so a restart of the app still
+  finishes it. A session over 12 h is not counted (console left on or asleep). Details shows three tiles: Time played,
+  Last time and Launches (app.js fmtPlay). "Most played" now sorts by time. A unit test covers the settings round trip
+  (hidden, ms, session).
+- **Shelf moves aside like #scene** (a48e57b): translateX(-17vw) and scale(.92) with the menu or Details open. This is
+  a 2D transform of the 3D projection (Gl3D::set_view).
+- **Made-up fronts carry the title** (covers.js drawFront): there is a fronts atlas on the GPU, one cell per coverless
+  case. The title is centred and shrinks to fit 4 lines. It has a dark outline and a white-to-hue gradient fill.
+- **Frosted glass** (0ee7065): the menu and Details sit over a real blur of the frame, cases included. This is the
+  renderer's glass pass, now replaying the 3D cases too.
+- **Inspect, PSP** (4cf3a56): UMD with an oval well and the disc in a clear shell. Preview mode `demo-<sys>-inspect`.
+- **Start-up** (4ab1cdf): the VITRINE splash shows while the library is read, with the current step under it. It is
+  held until the covers in view are ready (at most 1.5 s). Then the cases ripple in from the chosen one (70 ms per
+  step, .75 s each), the HUD fades up and the splash scales out. Preview mode `intro-<ms>`.
+- **Still to do:**
+  - Rename and collections: both need text input (the PS5 on-screen keyboard, untested here).
+  - Choosing another cover.
+- **Verified on:** PC previews (`real-gc-1-details`, `real-ps2-3`, `real-ps2-3-menu`, `real-gc-1-flip`,
+  `demo-psp-2-inspect` with BOXSHELF_ISP 1/2, `loading`, `intro-350`), tests (data 232/0, shelf 73/0), `make app`.
+  Not run on the console. The play clock in particular depends on how the console reports a closed game, which only
+  the console can show.
