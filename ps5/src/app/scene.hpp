@@ -137,6 +137,8 @@ class ShelfScreen
     void draw_menu(GlCanvas &canvas, double now);
     // Details (Square): app.js fillDetails(), with what the PS5 knows about the game
     void open_details(double now);
+    // Inspect (R3): app.js inspect mode — the case in your hands, turned with the right stick, opened, its disc taken out
+    void inspect_input(const hui::InputFrame &in, double now, float dt);
     void details_input(const hui::InputFrame &in, double now);
     void draw_details(GlCanvas &canvas, double now);
     std::vector<std::pair<std::string, std::string>> info_rows(const Item &item) const;
@@ -166,6 +168,12 @@ class ShelfScreen
     Glide qm_hl_{0.0f, 0.0f, -1.0, .32f, Bezier{.3f, .9f, .25f, 1.0f}, false}; // the white pill's row
     int qm_row_ = 0, qm_sub_ = -1, qm_chip_ = 0;
     bool det_open_ = false;
+    bool isp_on_ = false;
+    int isp_state_ = 0;                   // 0 closed, 1 open, 2 the disc out
+    float isp_yaw_ = 0.0f, isp_pitch_ = 0.0f, isp_zoom_ = 1.0f;
+    Glide isp_in_{0.0f, 0.0f, -1.0, .6f, Bezier{.22f, .9f, .25f, 1.0f}, true};
+    Glide isp_lid_{0.0f, 0.0f, -1.0, .7f, Bezier{.3f, .9f, .25f, 1.0f}, true};
+    Glide isp_out_{0.0f, 0.0f, -1.0, .8f, Bezier{.3f, .9f, .25f, 1.0f}, true};
     Glide det_{0.0f, 0.0f, -1.0, .55f, Bezier{.22f, .9f, .25f, 1.0f}, true};
     int art_request_ = 0;
     std::string art_status_;

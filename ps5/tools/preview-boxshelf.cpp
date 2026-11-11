@@ -310,7 +310,7 @@ int main(int argc, char **argv)
     std::string mode = argv[2];
     // <mode>-flip: the selected case turned round (Triangle), <mode>-turn: caught mid-turn
     int flip = 0;
-    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}, {"-menu", 4}, {"-details", 5}})
+    for (const auto &[suffix, kind] : {std::pair<const char *, int>{"-flip", 2}, {"-turn", 1}, {"-play", 3}, {"-menu", 4}, {"-details", 5}, {"-inspect", 6}})
         if (mode.size() > std::strlen(suffix) && mode.compare(mode.size() - std::strlen(suffix), std::string::npos, suffix) == 0)
             flip = kind, mode.resize(mode.size() - std::strlen(suffix));
     // BOXSHELF_LANG=pt|es: the interface language
@@ -520,6 +520,18 @@ int main(int argc, char **argv)
             if (frame > 2 && screen.covers_pending() == 0)
                 break;
             usleep(16000);
+        }
+        if (flip == 6)
+        {
+            // R3, then Cross twice: the case opens and its disc comes out
+            press(screen, now, hui::Action::r3);
+            host.render(screen, now + 0.7);
+            press(screen, now + 0.8, hui::Action::confirm);
+            host.render(screen, now + 1.6);
+            press(screen, now + 1.7, hui::Action::confirm);
+            host.render(screen, now + 2.0);
+            host.render(screen, now + 2.8);
+            return host.write_ppm(argv[1]) ? 0 : 3;
         }
         if (flip == 5)
         {

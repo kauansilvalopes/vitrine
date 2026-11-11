@@ -580,6 +580,16 @@ void ShelfScreen::input(const hui::InputFrame &in, double now, float dt)
         return menu_input(in, now);
     if (det_open_)
         return details_input(in, now);
+    if (isp_on_)
+        return inspect_input(in, now, dt);
+    // R3: Inspect (PAD_HINTS)
+    if (in.is_pressed(hui::Action::r3) && model_.item() && model_.item()->kind == ItemKind::game)
+    {
+        isp_on_ = true, isp_state_ = 0, isp_yaw_ = 0.0f, isp_pitch_ = 0.0f, isp_zoom_ = 1.0f;
+        isp_in_.set(1.0f, now), isp_lid_.set(0.0f, now, true), isp_out_.set(0.0f, now, true);
+        set_flipped(false, now);
+        return;
+    }
     // Square: Details (PAD_HINTS)
     if (in.is_pressed(hui::Action::west))
         return open_details(now);
@@ -1304,10 +1314,12 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         }
     }
 
+    DiscOp pending_disc;
+    bool has_disc = false;
     for (int i : drawn)
     {
         const auto &slot = slots_[static_cast<std::size_t>(i)];
-        const float alpha = slot.fade.at(now);
+        float alpha = slot.fade.at(now);
         const Item &item = shelf.items[static_cast<std::size_t>(i)];
         const float x = slot.x.at(now), z = slot.z.at(now), ry = slot.ry.at(now);
         const bool is_sel = i == sel;
@@ -1322,6 +1334,21 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         op.depth = lk.d;
         op.favorite = item.kind == ItemKind::game && settings_.is_favorite(item.game.id);
         op.yaw = (ry + (is_sel ? turn : 0.0f)) * kPi / 180.0f;
+        // Inspect: the selected case comes forward to the middle and turns in your hands; the others fade back
+        const float held = isp_in_.at(now);
+        if (held > 0.001f)
+        {
+            if (is_sel)
+            {
+                op.x = op.x + (kTrackX + dx - op.x) * held;
+                op.z = op.z + (bw * 1.05f * 1.45f * isp_zoom_ - op.z) * held;
+                op.yaw = op.yaw + ((isp_yaw_) * kPi / 180.0f - op.yaw) * held;
+                op.pitch = isp_pitch_ * kPi / 180.0f * held;
+                op.opening = isp_lid_.at(now);
+            }
+            else
+                alpha *= 1.0f - .9f * held;
+        }
         op.front = cover_texture(canvas, item);
         if (is_sel && back_tex)
         {
@@ -1337,6 +1364,24 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             op.side_r = own_side.r * .8f, op.side_g = own_side.g * .8f, op.side_b = own_side.b * .8f;
         op.alpha = alpha;
         op.shade = is_sel ? 1.0f : 0.66f; // .slot:not(.sel) .dim{opacity:.34}
+        if (is_sel && held > 0.001f && isp_lid_.at(now) > 0.01f && op.front)
+        {
+            // the disc: in the tray once the case is open, then out to the right (inspect3d.js take out); its label is
+            // the game's cover
+            DiscOp disc;
+            const float out = isp_out_.at(now);
+            disc.radius = std::min(lk.w, lk.h) * .43f;
+            disc.x = op.x + out * lk.w * .95f;
+            disc.y = op.y;
+            disc.z = op.z + 2.0f + out * 60.0f;
+            disc.yaw = op.yaw * (1.0f - out);
+            disc.spin = static_cast<float>(now) * .6f * out;
+            disc.label = op.front;
+            disc.sheen = .35f;
+            disc.alpha = std::min(1.0f, isp_lid_.at(now) * 1.5f);
+            pending_disc = disc;
+            has_disc = true;
+        }
         // The front is rounded only away from the spine you see; cases right of the selection (.rside) mirror it.
         op.corner = lk.st->rc;
         op.corner_side = i > sel ? -1.0f : 1.0f;
@@ -1365,8 +1410,9 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
             for (int c = 0; c < 4; ++c)
                 op.spine_shade[c] = is_sel ? shade_sel[c] : shade[c];
         }
-        // Floor: the selected case's real reflection (setup.css box-reflect: below 3px, .3 fading over 42 %)
-        if (is_sel)
+        // Floor: the selected case's real reflection (setup.css box-reflect: below 3px, .3 fading over 42 %); none while
+        // the case is in your hands (Inspect)
+        if (is_sel && held < .02f)
         {
             CaseOp r = op;
             r.reflection = true;
@@ -1376,6 +1422,8 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         }
         canvas.case3d(op);
     }
+    if (has_disc)
+        canvas.disc3d(pending_disc);
 }
 
 // ---- top bar ----------------------------------------------------------------------------------------------------
@@ -1544,15 +1592,18 @@ void ShelfScreen::draw_hints(DrawList &list)
     };
     const Item *it = model_.item();
     const char *play = !it || it->kind == ItemKind::setup ? tr("Set up") : tr("Play");
-    // Only what works today (owner, 2026-11-10): Inspect and Settings / Museum come back with their features.
-    const Hint hints[] = {
-        {{"L2", "R2"}, tr("System"), nullptr},
-        {{"tri", nullptr}, tr("Flip"), "\xe2\x99\xa5"},
-        {{"sq", nullptr}, tr("Details"), nullptr},
-        {{"x", nullptr}, play, nullptr},
-        {{"L3", nullptr}, tr("Shuffle"), nullptr},
-        {{"menu", nullptr}, tr("Menu"), tr("Sort")},
-    };
+    // Only what works today (owner, 2026-11-10): Settings / Museum come back with their feature.
+    std::vector<Hint> hints;
+    if (isp_on_) // app.js inspect hints: Turn, Zoom, then the next step, Back
+        hints = {{{"R", nullptr}, tr("Turn"), nullptr},
+                 {{"L2", "R2"}, tr("Zoom"), nullptr},
+                 {{"x", nullptr}, isp_state_ == 0 ? tr("Open case") : isp_state_ == 1 ? tr("Take disc out") : tr("Play"), nullptr},
+                 {{"o", nullptr}, isp_state_ == 0 ? tr("Put back") : isp_state_ == 1 ? tr("Close case") : tr("Put disc back"), nullptr}};
+    else
+        hints = {{{"L2", "R2"}, tr("System"), nullptr},     {{"tri", nullptr}, tr("Flip"), "\xe2\x99\xa5"},
+                 {{"sq", nullptr}, tr("Details"), nullptr},  {{"x", nullptr}, play, nullptr},
+                 {{"R3", nullptr}, tr("Inspect"), nullptr},  {{"L3", nullptr}, tr("Shuffle"), nullptr},
+                 {{"menu", nullptr}, tr("Menu"), tr("Sort")}};
     const float font = 12.0f, key_h = 18.0f, hint_h = 28.0f, pad_x = 10.0f, gap_in = 7.0f, gap = 6.0f;
     auto key_width = [&](const char *k)
     {
@@ -1591,7 +1642,7 @@ void ShelfScreen::draw_hints(DrawList &list)
     list.bordered_rect({x0, y0, total, bar_h}, bar_h * .5f, Color{10 / 255.f, 12 / 255.f, 22 / 255.f, .78f}, 1.0f, kLine);
     float x = x0 + 8.0f + 1.0f;
     const float cy = y0 + bar_h * .5f;
-    for (std::size_t n = 0; n < std::size(hints); ++n)
+    for (std::size_t n = 0; n < hints.size(); ++n)
     {
         const auto &h = hints[n];
         float hx = x + pad_x;
@@ -2064,6 +2115,39 @@ std::vector<std::pair<std::string, std::string>> ShelfScreen::info_rows(const It
     return rows;
 }
 
+void ShelfScreen::inspect_input(const hui::InputFrame &in, double now, float dt)
+{
+    // right stick (or the D-pad) turns, L2 / R2 zoom; Cross: open the case, take the disc out, play; Circle: one step back
+    isp_yaw_ += in.stick2_x * 160.0f * dt;
+    isp_pitch_ = std::clamp(isp_pitch_ + in.stick2_y * 120.0f * dt, -45.0f, 45.0f);
+    if (in.nav == hui::Direction::left)
+        isp_yaw_ -= 30.0f;
+    else if (in.nav == hui::Direction::right)
+        isp_yaw_ += 30.0f;
+    isp_zoom_ = std::clamp(isp_zoom_ + (in.trigger_r - in.trigger_l) * 1.2f * dt, .7f, 1.5f);
+    if (in.is_pressed(hui::Action::confirm))
+    {
+        if (isp_state_ == 0)
+            isp_state_ = 1, isp_lid_.set(.55f, now); // about 55 degrees: the door still shows its cover
+        else if (isp_state_ == 1)
+            isp_state_ = 2, isp_out_.set(1.0f, now);
+        else
+            play(now);
+    }
+    if (in.is_pressed(hui::Action::back) || in.is_pressed(hui::Action::r3))
+    {
+        if (isp_state_ == 2 && !in.is_pressed(hui::Action::r3))
+            isp_state_ = 1, isp_out_.set(0.0f, now);
+        else if (isp_state_ == 1 && !in.is_pressed(hui::Action::r3))
+            isp_state_ = 0, isp_lid_.set(0.0f, now);
+        else
+        {
+            isp_on_ = false, isp_state_ = 0;
+            isp_in_.set(0.0f, now), isp_lid_.set(0.0f, now), isp_out_.set(0.0f, now);
+        }
+    }
+}
+
 void ShelfScreen::open_details(double now)
 {
     const Item *it = model_.item();
@@ -2306,7 +2390,7 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
     draw_cases(canvas, now);
     auto &hud = canvas.list();
     // .info: translateX(-17vw), opacity 0; the hint bar hands over to the panel
-    hud.push_opacity(1.0f - away);
+    hud.push_opacity((1.0f - away) * (1.0f - isp_in_.at(now))); // the case in your hands covers the title strip
     hud.push_transform(1.0f, 0.0f, 0.0f, dx, 0.0f);
     draw_info(hud, now);
     hud.pop_transform();

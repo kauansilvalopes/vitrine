@@ -505,3 +505,31 @@ tests (data 232/0, shelf 64/0, list-library, preview smoke), `make app`; dist/PP
 01.002.005 and the zip's icon0.png is byte-identical to ff0bc46's. Release "Vitrine 0.2.5", Latest,
 `PPSA99850.zip` (PPSA99850/ at its root), SHA-256 45251ad72becd1dbbbd597687bf69a5cbed938217021546f80f48b1980f337f2.
 Not run on the console.
+
+## 2026-11-10 (night) — towards Boxshelf's level: Home, favourites, sort / filter, Details, Inspect
+
+Owner: "do the remaining steps so the app is as good as Boxshelf". Local commits, not pushed (no "sobe" yet):
+- **Favourites and Home** (ec5d73a): hold △ toggles a favourite (saved; the heart badge of `.slot.fav
+  .f-front::before` drawn in the 3D pass); a start the console confirms goes into the play history; the **Home**
+  shelf (app.js buildHome: the 12 last played, then the favourites A–Z) comes first when it has games, every case in
+  its own console's box (app.js `--bw = --ch * ratio`); its info line says "PS2 · played 3 days ago · Favorite".
+  **L3 Shuffle** lands on a random game. Uppercase now covers á/é/í… ("INÍCIO").
+- **Sort and filter** (8630317): Menu → Sort (A–Z, last played, most played) and Filter (all, favourites, played,
+  not played yet), saved; hold ☰ opens the menu on Sort. A shelf the filter empties goes; if nothing is left the
+  empty screen says how to bring the games back. Boxshelf's year / rating / genre / play-time sorts and its decade
+  and genre filters need game metadata the app does not have yet (Deviation).
+- **Details** (10a9ad4): □ opens Boxshelf's details panel (the shelf steps aside): hero in the game's hue (no blur
+  pass), cover, "PS2 · 11 of 105", title, chips, Last time / Launches tiles, Game info (region, format, emulator,
+  serial, file), Your copy (front / back present), "Plays in …"; ✕ Play and △ Favorite buttons; ←/→ walk the shelf
+  with it open; ○ / □ close. No description, logo, screenshots or trailer yet (no metadata source on the console).
+- **Inspect**: R3 brings the case forward; right stick / D-pad turn, L2 / R2 zoom; ✕ opens the case (door at ~55°),
+  ✕ takes the disc out (its label is the cover), ✕ plays; ○ steps back; the hint bar follows each step.
+- Hint bar now: System, Flip (hold ♥), Details, Play, Inspect, Shuffle, Menu (hold Sort). Only Settings / Museum
+  stay hidden.
+- **Verified on:** unit tests (data 232/0, shelf 68/0 incl. set_home), PC previews (`demo-home-*`, `demo-gc-0` with
+  BOXSHELF_FILTER=fav, `real-custom-0-menu`, `real-ps2-10-details`, `real-sw-4-details`, `real-gc-1-inspect`), `make
+  app`. **None of it has run on the console yet.**
+
+**Still missing for Boxshelf's level:** PS5 boxes (and PS1/PS2 backs) downloaded on the console from LaunchBox;
+game metadata (description, year, genre, players) for the richer Details and sorts; sounds (no audio layer yet);
+the Settings screen (Share).
