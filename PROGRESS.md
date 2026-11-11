@@ -654,3 +654,11 @@ only).
     106 jobs. The app's own data in /download0 (libretro lists, downloaded covers, misses) looks empty at this start,
     so everything is fetched again. Not confirmed why: download0 is an image file (download0.dat) that Elf Arsenal
     cannot list. The likely cause is one of the crashes.
+- **Crashed again mid-download** (klog): heap peaked at 110 MB with 6 failed allocations, then the same trap in
+  `on_body` under `fetch_back`. The body was gzip + chunked (no Content-Length), and the system malloc fallback had
+  no room either. The baseline was the problem: about 90 MB while fetching.
+  - **Cause of the baseline:** the art fetcher kept every LaunchBox game of every platform in memory, about 28,000
+    entries with overviews. At about 700 bytes a game on disk and more in memory, that is roughly 30 MB.
+  - **Fix:** right after loading, only the entries that match this library's jobs are kept (logged as "LaunchBox
+    kept N of M"). The decode cap is 7.5 MP, so GameTDB coverfullHQ (about 3328x2048) still fits.
+  - Tests and `make app` pass. Deploy is up to the owner (the permission check blocks it here).

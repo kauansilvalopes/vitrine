@@ -651,6 +651,26 @@ void ArtFetcher::work()
                 systems.push_back(j.system);
         if (!systems.empty())
             launchbox_ready(systems);
+        // Memory: the whole platforms are ~28,000 games with their overviews (tens of MB of a 128 MB heap); only the
+        // ones matching this library are kept (each job finds the same entry in the smaller list)
+        std::map<std::string, std::vector<data::LbGame>> kept;
+        std::size_t before = 0;
+        for (const auto &[k, list] : lb_)
+            before += list.size(), kept[k]; // every platform stays known, even with none of its games here
+        for (const auto &j : all)
+            if (const data::LbGame *lb = launchbox_game(j))
+            {
+                auto &v = kept[j.system];
+                if (std::none_of(v.begin(), v.end(), [&](const data::LbGame &g) { return g.id == lb->id; }))
+                    v.push_back(*lb);
+            }
+        std::size_t after = 0;
+        for (const auto &[k, list] : kept)
+            after += list.size();
+        lb_.clear();
+        for (auto &[k, list] : kept)
+            lb_[k] = std::move(list);
+        hui::sys::log("[BOXSHELF] art: LaunchBox kept %zu of %zu games", after, before);
     }
     // the info file, kept whole: what is there, plus what this run finds
     std::map<std::string, std::string> info_lines;
