@@ -702,13 +702,23 @@ void Gl3D::draw(const InspectOp &op, int surface_width, int surface_height) noex
         }
         const float floor = -D * .5f + tb;
         face(caseM, 0, 0, floor + .3f, w - 2.0f * wall, H - 2.0f * wall, 0, op.inner_r, op.inner_g, op.inner_b, false);
-        // the cradle the disc sits in (a shallow darker round) and the hub: a collar and the push button
         const float cyl = -lift;
-        circle(caseM, 0, cyl, floor + .6f, R * 1.035f, 0, op.inner_r * .84f, op.inner_g * .84f, op.inner_b * .84f, 1.0f, false);
-        const float hr = R * .135f;
-        circle(caseM, 0, cyl, floor + 1.5f, hr * 1.55f, 0, op.inner_r * 1.12f + .03f, op.inner_g * 1.12f + .03f,
-               op.inner_b * 1.12f + .03f, 1.0f, false);
-        circle(caseM, 0, cyl, floor + 3.0f, hr * .48f, 0, op.inner_r * .7f, op.inner_g * .7f, op.inner_b * .7f, 1.0f, false);
+        if (op.cart)
+        {
+            // the cartridge's cradle: a recess a touch bigger than the cartridge (interiorTexture, kind cart)
+            const float cw = R * 2.0f * .9f * 1.06f;
+            face(caseM, 0, cyl, floor + .6f, cw, cw * 1.1f, 0, op.inner_r * .78f, op.inner_g * .78f, op.inner_b * .78f, false);
+        }
+        else
+        {
+            // the cradle the disc sits in (a shallow darker round) and the hub: a collar and the push button
+            circle(caseM, 0, cyl, floor + .6f, R * 1.035f, 0, op.inner_r * .84f, op.inner_g * .84f, op.inner_b * .84f, 1.0f,
+                   false);
+            const float hr = R * .135f;
+            circle(caseM, 0, cyl, floor + 1.5f, hr * 1.55f, 0, op.inner_r * 1.12f + .03f, op.inner_g * 1.12f + .03f,
+                   op.inner_b * 1.12f + .03f, 1.0f, false);
+            circle(caseM, 0, cyl, floor + 3.0f, hr * .48f, 0, op.inner_r * .7f, op.inner_g * .7f, op.inner_b * .7f, 1.0f, false);
+        }
         // walls: one rounded ring in Boxshelf; four slabs here, standing on the back plate up to the lid
         const float zw = tb * .5f, Dw = D - tb;
         box(caseM, -w * .5f + wall * .5f, 0, zw, wall, H, Dw, sr, sg, sb);
@@ -759,11 +769,25 @@ void Gl3D::draw(const InspectOp &op, int surface_width, int surface_height) noex
                                         mat4_multiply(mat4_scale(op.scale * op.zoom, op.scale * op.zoom, op.scale * op.zoom),
                                                       mat4_multiply(mat4_rotate_x(-op.rx * deg * (1.0f - o)),
                                                                     mat4_rotate_y(op.ry * deg * (1.0f - o)))));
-        const float ms = 1.0f + .55f * o;
+        const float ms = 1.0f + (op.cart ? .9f : .55f) * o;
         const Mat4 discM = mat4_multiply(turn, mat4_multiply(mat4_translate(0, -lift * (1.0f - o), zIn * (1.0f - o) + .25f * H * o),
                                                              mat4_multiply(mat4_scale(ms, ms, ms),
                                                                            mat4_multiply(mat4_rotate_y(op.disc_turn * deg * o),
                                                                                          mat4_rotate_z(op.spin)))));
+        if (op.cart)
+        {
+            // inspect3d.js cart: a dark rounded shell, the label on its face, gold contacts along the bottom
+            const float cw = R * 2.0f * .9f, ch = cw * 1.1f, cd = H * .035f;
+            const Mat4 cartM = mat4_multiply(turn, mat4_multiply(mat4_translate(0, -lift * (1.0f - o), (floor + cd * .5f + 2.0f) * (1.0f - o) + .25f * H * o),
+                                                                 mat4_multiply(mat4_scale(ms, ms, ms), mat4_rotate_y(op.disc_turn * deg * o))));
+            box(cartM, 0, 0, 0, cw, ch, cd, 36 / 255.f, 37 / 255.f, 43 / 255.f);
+            const float ex = op.edge, ey = op.edge * op.ratio;
+            uvrect_[0] = ex, uvrect_[1] = ey, uvrect_[2] = 1.0f - ex, uvrect_[3] = 1.0f - ey;
+            face(cartM, 0, -ch * .06f, cd * .5f + .3f, cw * .86f, ch * .74f, op.front, 1, 1, 1, false);
+            uvrect_[0] = uvrect_[1] = 0.0f, uvrect_[2] = uvrect_[3] = 1.0f;
+            box(cartM, 0, ch * .5f - ch * .08f, 0, cw * .7f, ch * .12f, cd + 2.0f, 201 / 255.f, 162 / 255.f, 74 / 255.f);
+        }
+        else
         // printed side: the label (the cover's art, inside the case-coloured border the shelf picture carries), the clear
         // hub ring, the hole
         {
@@ -776,10 +800,13 @@ void Gl3D::draw(const InspectOp &op, int surface_width, int surface_height) noex
         circle(discM, 0, 0, TH * .5f + .3f, R * .22f, 0, .78f, .8f, .86f, .85f, false);
         circle(discM, 0, 0, TH * .5f + .6f, R * .14f, 0, op.inner_r * .5f, op.inner_g * .5f, op.inner_b * .5f, 1.0f, false);
         // data side: silver with the bands of a real disc
+        if (!op.cart)
+        {
         sheen_ = .5f, spin_ = op.spin;
         circle(discM, 0, 0, -TH * .5f, R * .985f, 0, .82f, .84f, .9f, 1.0f, true);
         sheen_ = 0.0f;
         circle(discM, 0, 0, -TH * .5f - .3f, R * .14f, 0, op.inner_r * .5f, op.inner_g * .5f, op.inner_b * .5f, 1.0f, true);
+        }
     }
 
     ambient_ = .62f;

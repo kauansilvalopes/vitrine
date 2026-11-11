@@ -80,7 +80,8 @@ struct InspectOp
     float corner = .03f;                     // style.rc
     float media_size = .62f;                 // app.js MEDIA[sys].size: the disc's diameter / the case's width
     float disc_lift = 0.0f;                  // inspect3d.js discLift(): .1 for GameCube
-    float edge = .022f;                      // style.edge: the border around the cover art (cropped off the disc label)
+    float edge = .022f;
+    bool cart = false;                       // app.js MEDIA kind "cart" (Switch, 3DS): a cartridge, not a disc                      // style.edge: the border around the cover art (cropped off the disc label)
     std::uint32_t front = 0, back = 0, spine = 0;
     bool flip_back = false;
     float back_uv[4] = {0, 0, 1, 1};
