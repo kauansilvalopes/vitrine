@@ -2389,11 +2389,14 @@ void ShelfScreen::draw_menu(GlCanvas &canvas, double now)
     const float t = qm_.at(now);
     if (t <= 0.001f && !qm_open_)
         return;
+    // .qm: width 460, from the right (translateX(104%) -> 0); rgba(8,10,18,.74) over a 26px blur (backdrop-filter:
+    // the frame so far, blurred), 1px --line on the left; padding 34 / 28
+    canvas.glass();
     DrawList &list = canvas.list();
-    // .qm: width 460, from the right (translateX(104%) -> 0); rgba(8,10,18,.74) over a 26px blur (no blur pass here:
-    // a little more opaque instead), 1px --line on the left; padding 34 / 28
     const float pw = 460.0f, px = W - pw * t + (1.0f - t) * pw * .04f;
-    list.rounded_rect({px, 0, pw, H}, 0, Color{8 / 255.f, 10 / 255.f, 18 / 255.f, .95f});
+    if (canvas.glass_texture())
+        list.glass(canvas.glass_texture(), {px, 0, pw, H}, 0.0f, Color{1, 1, 1, 1});
+    list.rounded_rect({px, 0, pw, H}, 0, Color{8 / 255.f, 10 / 255.f, 18 / 255.f, canvas.glass_texture() ? .74f : .95f});
     list.rounded_rect({px, 0, 1, H}, 0, kLine);
     const float inner = px + 28.0f;
     float y = 34.0f;
@@ -2666,11 +2669,14 @@ void ShelfScreen::draw_details(GlCanvas &canvas, double now)
     const Item *it = model_.item();
     if (!it || it->kind != ItemKind::game)
         return;
+    // .details: width 460 from the right, rgba(8,10,18,.74) over blur(26px), --line on the left
+    canvas.glass();
     DrawList &list = canvas.list();
     const auto &g = it->game;
-    // .details: width 460 from the right, rgba(8,10,18,.74) over a blur (a little more opaque here), --line on the left
     const float pw = 460.0f, px = W - pw * t + (1.0f - t) * pw * .04f;
-    list.rounded_rect({px, 0, pw, H}, 0, Color{8 / 255.f, 10 / 255.f, 18 / 255.f, .95f});
+    if (canvas.glass_texture())
+        list.glass(canvas.glass_texture(), {px, 0, pw, H}, 0.0f, Color{1, 1, 1, 1});
+    list.rounded_rect({px, 0, pw, H}, 0, Color{8 / 255.f, 10 / 255.f, 18 / 255.f, canvas.glass_texture() ? .74f : .95f});
     list.rounded_rect({px, 0, 1, H}, 0, kLine);
     list.push_clip({px, 0, pw, H});
 
@@ -2953,6 +2959,6 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
     draw_details(canvas, now);
     draw_menu(canvas, now);
     draw_launch(canvas, now);
-    draw_toast(hud, now);
+    draw_toast(canvas.list(), now); // the list after the panels' glass split
 }
 } // namespace boxshelf::app

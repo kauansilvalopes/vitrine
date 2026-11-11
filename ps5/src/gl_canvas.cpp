@@ -104,6 +104,9 @@ void GlCanvas::inspect3d(const InspectOp &op) noexcept
 void GlCanvas::run_item(void *user, int width, int height) noexcept
 {
     auto *item = static_cast<Item *>(user);
+    // the glass copy (a small replay of the frame so far): only the cases and discs, the pictures are already drawn
+    if (width < 640 && item->kind != 0 && item->kind != 1)
+        return;
     if (item->kind == 4)
     {
         item->gl->draw(item->isp, width, height);
@@ -221,13 +224,29 @@ void GlCanvas::end_spine() noexcept
     split();
 }
 
+void GlCanvas::glass() noexcept
+{
+    if (!glass_texture_ || items_.size() >= max_items)
+        return;
+    Item item;
+    item.kind = 6;
+    item.owner = this;
+    items_.push_back(item);
+    split();
+}
+
 void GlCanvas::submit(hui::gfx::Renderer &renderer) noexcept
 {
     for (std::size_t i = 0; i <= segment_; i++)
     {
         renderer.draw(lists_[i]);
         if (i < items_.size())
-            renderer.custom(&GlCanvas::run_item, &items_[i]);
+        {
+            if (items_[i].kind == 6)
+                renderer.glass();
+            else
+                renderer.custom(&GlCanvas::run_item, &items_[i]);
+        }
     }
 }
 

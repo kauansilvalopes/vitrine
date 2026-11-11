@@ -128,8 +128,7 @@ void Renderer::play(const Layer &layer, int width, int height, float virtual_wid
     }
     else if (layer.kind == Kind::custom)
     {
-        if (width == kGlassWidth) // the small glass copy skips the 3D pass
-            return;
+        // the small glass copy replays the custom passes too (the callee skips what it must not redo)
         layer.fn(layer.user, width, height);
         ++draw_calls_;
     }

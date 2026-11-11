@@ -67,6 +67,17 @@ class GlCanvas final
     {
         gl3d_.set_camera(distance, origin_x, origin_y);
     }
+    // Frosted glass (CSS backdrop-filter: blur): everything drawn so far is blurred into glass_texture(), which the
+    // next calls show with DrawList::glass(). set_glass_texture() once, with the renderer's.
+    void glass() noexcept;
+    void set_glass_texture(std::uint32_t texture) noexcept
+    {
+        glass_texture_ = texture;
+    }
+    std::uint32_t glass_texture() const noexcept
+    {
+        return glass_texture_;
+    }
     void set_view(float scale, float shift_x) noexcept
     {
         gl3d_.set_view(scale, shift_x);
@@ -117,7 +128,8 @@ class GlCanvas final
     struct Item
     {
         Gl3D *gl = nullptr;
-        int kind = 0; // 0 case, 1 disc, 2 render the back face, 3 render the spine, 4 inspect, 5 render the fronts
+        int kind = 0; // 0 case, 1 disc, 2 render the back face, 3 render the spine, 4 inspect, 5 render the fronts,
+                      // 6 the glass copy
         GlCanvas *owner = nullptr;
         CaseOp c;
         DiscOp d;
@@ -144,7 +156,7 @@ class GlCanvas final
     hui::gfx::DrawList *list_ = nullptr;
     hui::gfx::GlBatch *batch_ = nullptr;
     const hui::gfx::Font *font_ = nullptr;
-    std::uint32_t font_texture_ = 0;
+    std::uint32_t font_texture_ = 0, glass_texture_ = 0;
     std::vector<CachedTexture> textures_;
 };
 

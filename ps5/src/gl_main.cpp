@@ -71,6 +71,7 @@ void run_gl(GlDrawScene draw) noexcept
     std::int64_t last_report = hui::sys::monotonic_us();
     for (;;)
     {
+        canvas.set_glass_texture(renderer.glass_texture());
         canvas.begin(&renderer.batch(), &font, font_texture);
         draw(canvas);
         renderer.begin();

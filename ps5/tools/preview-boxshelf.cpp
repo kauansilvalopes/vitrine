@@ -76,6 +76,7 @@ struct GlHost
 
     void render(boxshelf::app::ShelfScreen &screen, double now)
     {
+        canvas.set_glass_texture(renderer.glass_texture());
         canvas.begin(&renderer.batch(), &font, font_texture);
         screen.draw(canvas, now, clock);
         renderer.begin();
