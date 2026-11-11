@@ -687,3 +687,6 @@ smoke) and `make app` pass. Tag ps5-v0.4.1, release "Vitrine 0.4.1", Latest, `PP
 - **Contents:** the box art crash fix and memory trims (both run on the console), PS5SX2 backs only where the file
   exists, LaunchBox alternatives, Wii U art from GameTDB, and the "N without box art" row.
 - **Not yet run on the console:** the last commit (a91288b: Wii U art, LaunchBox alternatives).
+
+- Catalog PR (owner: "sobe na prosperostore o pull request"): darkxex/ps5-homebrew-catalog#1249, apps/PPSA99850.json
+  ps5-v0.3.0 -> ps5-v0.4.1 (0.4.0 skipped: it has the box art crash), sha256 = GitHub's digest, icon pinned to the tag.
