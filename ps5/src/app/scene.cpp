@@ -4,6 +4,7 @@
 // which rule. CSS pixels are virtual pixels here (the canvas is 1920x1080, the size Boxshelf was measured at).
 #include "app/scene.hpp"
 
+#include "app/art_fetcher.hpp"
 #include "app/i18n.hpp"
 #include "app/ui_fonts.hpp"
 #include "data/scan.hpp"
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <ctime>
 
 namespace boxshelf::app
@@ -477,6 +479,62 @@ void ShelfScreen::rebuild_home(double now)
     (void)now;
 }
 
+std::vector<std::pair<std::string, std::string>> ShelfScreen::sort_options() const
+{
+    // app.js SORTS (play time is counted in starts here)
+    return {{"az", "A\xe2\x80\x93Z"},           {"year", tr("Release year")}, {"recent", tr("Last played")},
+            {"most", tr("Most played")}, {"rating", tr("Score")},       {"genre", tr("Genre")}};
+}
+
+std::vector<std::pair<std::string, std::string>> ShelfScreen::filter_options() const
+{
+    // app.js filterList(): the fixed ones, 2+ players and co-op when any game is, each decade, the 12 commonest genres
+    std::vector<std::pair<std::string, std::string>> list = {
+        {"all", tr("All games")}, {"fav", tr("Favorites")}, {"played", tr("Played")}, {"unplayed", tr("Not played yet")}};
+    std::vector<int> decades;
+    std::map<std::string, int> genres;
+    bool multi = false, coop = false;
+    for (const Item *it : library_.all_games())
+    {
+        const auto &in = it->game.info;
+        if (const int y = std::atoi(in.year.c_str()); y > 1900)
+            if (std::find(decades.begin(), decades.end(), y / 10 * 10) == decades.end())
+                decades.push_back(y / 10 * 10);
+        multi = multi || std::atoi(in.players.c_str()) >= 2;
+        coop = coop || in.coop;
+        std::size_t start = 0;
+        while (!in.genres.empty() && start <= in.genres.size())
+        {
+            auto semi = in.genres.find(';', start);
+            if (semi == std::string::npos)
+                semi = in.genres.size();
+            std::string one = in.genres.substr(start, semi - start);
+            while (!one.empty() && one.front() == ' ')
+                one.erase(0, 1);
+            if (!one.empty())
+                ++genres[one];
+            start = semi + 1;
+        }
+    }
+    if (multi)
+        list.push_back({"multi", tr("2+ players")});
+    if (coop)
+        list.push_back({"coop", tr("Co-op")});
+    std::sort(decades.begin(), decades.end());
+    for (int d : decades)
+        list.push_back({"dec:" + std::to_string(d), std::to_string(d) + "s"});
+    std::vector<std::pair<int, std::string>> top;
+    for (const auto &[n, c] : genres)
+        top.push_back({c, n});
+    std::stable_sort(top.begin(), top.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    if (top.size() > 12)
+        top.resize(12);
+    std::sort(top.begin(), top.end(), [](const auto &a, const auto &b) { return a.second < b.second; });
+    for (const auto &[c, n] : top)
+        list.push_back({"genre:" + n, n});
+    return list;
+}
+
 void ShelfScreen::arrange(double now)
 {
     const data::System keep_sys = model_.empty() ? data::System::count : model_.cur().system;
@@ -489,14 +547,48 @@ void ShelfScreen::arrange(double now)
             return true;
         const auto *h = settings_.history_of(it.game.id);
         const bool played = h && h->count > 0;
+        const auto &in = it.game.info;
+        if (f == "multi")
+            return std::atoi(in.players.c_str()) >= 2;
+        if (f == "coop")
+            return in.coop;
+        if (f.rfind("dec:", 0) == 0)
+        {
+            const int y = std::atoi(in.year.c_str()), d = std::atoi(f.c_str() + 4);
+            return y >= d && y < d + 10;
+        }
+        if (f.rfind("genre:", 0) == 0)
+        {
+            const std::string want = f.substr(6);
+            std::size_t start = 0;
+            while (start <= in.genres.size())
+            {
+                auto semi = in.genres.find(';', start);
+                if (semi == std::string::npos)
+                    semi = in.genres.size();
+                std::string one = in.genres.substr(start, semi - start);
+                while (!one.empty() && one.front() == ' ')
+                    one.erase(0, 1);
+                if (one == want)
+                    return true;
+                start = semi + 1;
+            }
+            return false;
+        }
         return f == "fav" ? settings_.is_favorite(it.game.id) : f == "played" ? played : f == "unplayed" ? !played : true;
     };
-    auto key = [&](const Item &it) -> long long
+    // app.js arrange(): played ones by the last start / most starts; year and rating with the unknown last; genre A-Z
+    auto key = [&](const Item &it) -> double
     {
+        const auto &in = it.game.info;
+        if (order == "year")
+            return in.year.empty() ? -1e9 : -std::atof(in.year.c_str()); // ascending, as by(yearOf)
+        if (order == "rating")
+            return in.rating.empty() ? -1e9 : std::atof(in.rating.c_str());
         const auto *h = settings_.history_of(it.game.id);
         if (!h || h->count == 0)
             return -1;
-        return order == "recent" ? h->last : h->count;
+        return order == "recent" ? static_cast<double>(h->last) : h->count;
     };
     std::vector<Shelf> out;
     for (int i = 0; i < library_.shelf_count(); ++i)
@@ -509,8 +601,17 @@ void ShelfScreen::arrange(double now)
         for (const auto &it : src.items)
             if (keep(it))
                 s.items.push_back(it);
-        if (order == "recent" || order == "most") // the played ones first, the rest in the shelf's own order
+        if (order == "recent" || order == "most" || order == "year" || order == "rating")
             std::stable_sort(s.items.begin(), s.items.end(), [&](const Item &a, const Item &b) { return key(a) > key(b); });
+        else if (order == "genre") // the first genre A-Z, the unknown last
+            std::stable_sort(s.items.begin(), s.items.end(), [](const Item &a, const Item &b)
+                             {
+                                 const std::string x = a.game.info.genres.substr(0, a.game.info.genres.find(';'));
+                                 const std::string y = b.game.info.genres.substr(0, b.game.info.genres.find(';'));
+                                 if (x.empty() != y.empty())
+                                     return y.empty();
+                                 return x < y;
+                             });
         s.game_count = static_cast<int>(std::count_if(s.items.begin(), s.items.end(),
                                                       [](const Item &x) { return x.kind == ItemKind::game; }));
         if (s.game_count > 0) // a shelf the filter empties goes, like a shelf with no games
@@ -933,6 +1034,21 @@ void ShelfScreen::draw_floor_and_halo(DrawList &list, double now)
 
 void ShelfScreen::art_arrived(const std::string &game_id, const std::string &path)
 {
+    if (game_id == "|info")
+    {
+        // new info from LaunchBox: every copy of each game takes it (the shelves keep their order)
+        std::map<std::string, data::Game::Info> by_id;
+        for (auto &[id, in] : read_info())
+            by_id[id] = std::move(in);
+        auto apply = [&](data::Game &g)
+        {
+            if (const auto it = by_id.find(g.id); it != by_id.end())
+                g.info = it->second;
+        };
+        library_.for_each_game(apply);
+        model_.for_each_game(apply);
+        return;
+    }
     const auto bar = game_id.rfind("|back");
     if (bar != std::string::npos && bar + 5 == game_id.size())
     {
@@ -1225,33 +1341,29 @@ void ShelfScreen::draw_made_up_back(DrawList &list, const Item &item, const Rect
         list.rounded_rect({sx - t * .5f, sy + t * .5f, t, shot_h - t}, 0, edge);
         list.rounded_rect({sx + shot_w - t * .5f, sy + t * .5f, t, shot_h - t}, 0, edge);
     }
-    // the info rows (app.js infoRows()), 13px Lexend: key at 6 % in white .55, value at 34 %
-    std::vector<std::pair<std::string, std::string>> rows;
-    const auto &g = item.game;
-    if (g.path.rfind("/appdb/", 0) == 0)
-    {
-        const std::string from = g.id.substr(0, g.id.find(':')); // the shelf it came from
-        rows.push_back({tr("Type"), from == "media"    ? std::string(tr("Streaming app"))
-                                    : from == "custom" ? std::string(tr("Homebrew"))
-                                                       : trf("%s game", from == "ps4" ? "PS4" : "PS5")});
-        rows.push_back({tr("Title ID"), g.app.empty() ? std::string(tr("Unknown")) : g.app});
-    }
-    else
-    {
-        rows.push_back({tr("Region"), g.region.empty() ? std::string(tr("Unknown")) : g.region});
-        std::string file = tr("Folder");
-        if (!g.folder)
-        {
-            const auto dot = g.path.find_last_of('.');
-            file = dot == std::string::npos ? std::string(tr("File")) : upper(g.path.substr(dot + 1));
-        }
-        rows.push_back({tr("File"), file});
-        rows.push_back({tr("Emulator"), emulator_name(item.system)});
-        if (!g.disc_id.empty())
-            rows.push_back({tr("Serial"), g.disc_id});
-    }
+    // the blurb (6 lines) and the info rows (app.js infoRows(g).slice(0, 5)), 13px Lexend: key at 6 % in white .55,
+    // value at 34 %
+    std::vector<std::pair<std::string, std::string>> rows = info_rows(item);
+    if (rows.size() > 5)
+        rows.resize(5);
     float y = top + shot_h * 2.0f + 44.0f * k;
     const float fs = 13.0f * k;
+    if (!item.game.info.overview.empty())
+    {
+        std::string flat = item.game.info.overview;
+        for (char &ch : flat)
+            if (ch == '\n')
+                ch = ' ';
+        auto blurb = wrap_lines(Face::lexend500, flat, fs, W * .88f);
+        if (blurb.size() > 6)
+            blurb.resize(6), blurb.back() += "\xe2\x80\xa6";
+        for (const auto &l : blurb)
+        {
+            text_at_baseline(list, Face::lexend500, l, c.x + W * .06f, c.y + y, fs, Color{1, 1, 1, .9f});
+            y += 17.0f * k;
+        }
+        y += 10.0f * k;
+    }
     for (const auto &[key, value] : rows)
     {
         if (y > Hh - 40.0f * k)
@@ -1952,21 +2064,19 @@ std::vector<ShelfScreen::MenuRow> ShelfScreen::menu_rows() const
         rows.push_back(std::move(a));
     }
     {
-        static const char *const sorts[][2] = {{"az", "A\xe2\x80\x93Z"}, {"recent", "Last played"}, {"most", "Most played"}};
-        static const char *const filters[][2] = {
-            {"all", "All games"}, {"fav", "Favorites"}, {"played", "Played"}, {"unplayed", "Not played yet"}};
         MenuRow so{5, tr("Sort"), "", {}, 0}, fi{6, tr("Filter"), "", {}, 0};
-        for (int i = 0; i < 3; ++i)
+        const auto sorts = sort_options(), filters = filter_options();
+        for (std::size_t i = 0; i < sorts.size(); ++i)
         {
-            so.chips.push_back(tr(sorts[i][1]));
-            if (settings_.sort == sorts[i][0])
-                so.current = i, so.value = tr(sorts[i][1]);
+            so.chips.push_back(sorts[i].second);
+            if (settings_.sort == sorts[i].first)
+                so.current = static_cast<int>(i), so.value = sorts[i].second;
         }
-        for (int i = 0; i < 4; ++i)
+        for (std::size_t i = 0; i < filters.size(); ++i)
         {
-            fi.chips.push_back(tr(filters[i][1]));
-            if (settings_.filter == filters[i][0])
-                fi.current = i, fi.value = tr(filters[i][1]);
+            fi.chips.push_back(filters[i].second);
+            if (settings_.filter == filters[i].first)
+                fi.current = static_cast<int>(i), fi.value = filters[i].second;
         }
         rows.push_back(std::move(so));
         rows.push_back(std::move(fi));
@@ -1988,10 +2098,11 @@ void ShelfScreen::menu_apply(const MenuRow &row, int chip, double now)
 {
     if (row.kind == 5 || row.kind == 6)
     {
-        static const char *const sorts[] = {"az", "recent", "most"};
-        static const char *const filters[] = {"all", "fav", "played", "unplayed"};
+        const auto options = row.kind == 5 ? sort_options() : filter_options();
+        if (chip < 0 || chip >= static_cast<int>(options.size()))
+            return;
         std::string &v = row.kind == 5 ? settings_.sort : settings_.filter;
-        const std::string pick = row.kind == 5 ? sorts[chip] : filters[chip];
+        const std::string pick = options[static_cast<std::size_t>(chip)].first;
         if (v == pick)
             return;
         v = pick;
@@ -2239,6 +2350,37 @@ void ShelfScreen::draw_menu(GlCanvas &canvas, double now)
 
 // ---- Details (Square) ---------------------------------------------------------------------------------------
 
+std::vector<std::pair<std::string, std::string>> ShelfScreen::info_facts(const data::Game &g) const
+{
+    // app.js infoRows(): Released, Developer, Publisher (when another), Genre, Players (co-op), Rating, Community score
+    std::vector<std::pair<std::string, std::string>> rows;
+    const auto &i = g.info;
+    if (!i.year.empty())
+        rows.push_back({tr("Released"), i.year});
+    if (!i.developer.empty())
+        rows.push_back({tr("Developer"), i.developer});
+    if (!i.publisher.empty() && i.publisher != i.developer)
+        rows.push_back({tr("Publisher"), i.publisher});
+    if (!i.genres.empty())
+    {
+        std::string gs = i.genres;
+        for (std::size_t at = gs.find(';'); at != std::string::npos; at = gs.find(';', at + 2))
+            gs.replace(at, 1, ", ");
+        rows.push_back({tr("Genre"), gs});
+    }
+    if (!i.players.empty())
+        rows.push_back({tr("Players"), i.players + (i.coop ? std::string(" ") + tr("(co-op)") : std::string())});
+    if (!i.esrb.empty())
+        rows.push_back({tr("Rating"), i.esrb.substr(0, i.esrb.find(" - "))});
+    if (!i.rating.empty())
+    {
+        char r[16];
+        std::snprintf(r, sizeof r, "%.1f / 5", std::atof(i.rating.c_str()));
+        rows.push_back({tr("Community score"), r});
+    }
+    return rows;
+}
+
 std::vector<std::pair<std::string, std::string>> ShelfScreen::info_rows(const Item &item) const
 {
     // app.js infoRows(), with what the PS5 knows: the made-up back shows the same facts
@@ -2251,8 +2393,12 @@ std::vector<std::pair<std::string, std::string>> ShelfScreen::info_rows(const It
                                     : from == "custom" ? std::string(tr("Homebrew"))
                                                        : trf("%s game", from == "ps4" ? "PS4" : "PS5")});
         rows.push_back({tr("Title ID"), g.app.empty() ? std::string(tr("Unknown")) : g.app});
+        for (auto &r : info_facts(g))
+            rows.push_back(std::move(r));
         return rows;
     }
+    for (auto &r : info_facts(g))
+        rows.push_back(std::move(r));
     rows.push_back({tr("Region"), g.region.empty() ? std::string(tr("Unknown")) : g.region});
     std::string file = tr("Folder");
     if (!g.folder)
@@ -2402,19 +2548,49 @@ void ShelfScreen::draw_details(GlCanvas &canvas, double now)
     }
     // .d-chips: .chipx 11px 600, 4px 9px, rgba(255,255,255,.1), 1px rgba(255,255,255,.14)
     {
-        std::vector<std::string> chips;
+        // fillDetails(): year, first genre, players, ESRB (a white chip), the community score (gold), then ours
+        struct Chip
+        {
+            std::string text;
+            int kind; // 0 plain, 1 ESRB, 2 score
+        };
+        std::vector<Chip> chips;
+        const auto &in = g.info;
+        if (!in.year.empty())
+            chips.push_back({in.year, 0});
+        if (!in.genres.empty())
+            chips.push_back({in.genres.substr(0, in.genres.find(';')), 0});
+        if (!in.players.empty())
+            chips.push_back({in.players == "1" ? std::string(tr("1 player")) : trf("%s players", in.players), 0});
+        if (!in.esrb.empty())
+            chips.push_back({in.esrb.substr(0, in.esrb.find(" - ")), 1});
+        if (!in.rating.empty())
+        {
+            char r[24];
+            std::snprintf(r, sizeof r, "\xe2\x98\x85 %.1f", std::atof(in.rating.c_str()));
+            chips.push_back({r, 2});
+        }
         const auto dot = g.path.find_last_of('.');
-        if (!g.folder && dot != std::string::npos && g.path.size() - dot <= 6 && g.path.rfind("/appdb/", 0) != 0)
-            chips.push_back(upper(g.path.substr(dot + 1)));
+        if (chips.empty() && !g.folder && dot != std::string::npos && g.path.size() - dot <= 6 && g.path.rfind("/appdb/", 0) != 0)
+            chips.push_back({upper(g.path.substr(dot + 1)), 0});
         if (settings_.is_favorite(g.id))
-            chips.push_back(tr("Favorite"));
+            chips.push_back({tr("Favorite"), 0});
         float chx = hx;
         const float chy = ty + 6.0f;
         for (const auto &c : chips)
         {
-            const float w = measure(Face::lexend600, c, 11.0f, .04f) + 18.0f;
-            list.bordered_rect({chx, chy, w, 22}, 11, Color{1, 1, 1, .1f}, 1.0f, Color{1, 1, 1, .14f});
-            text(list, Face::lexend600, c, chx + 9, chy + 4, 11.0f, kInk, Align::left, .04f, 14.0f);
+            const float w = measure(Face::lexend600, c.text, 11.0f, .04f) + 18.0f;
+            if (chx + w > px + pw - 20.0f)
+                break;
+            if (c.kind == 1) // .chipx.esrb: white, dark text
+                list.rounded_rect({chx, chy, w, 22}, 11, Color{1, 1, 1, .9f});
+            else if (c.kind == 2) // .chipx.score
+                list.bordered_rect({chx, chy, w, 22}, 11, Color{1, 207 / 255.f, 107 / 255.f, .16f}, 1.0f,
+                                   Color{1, 207 / 255.f, 107 / 255.f, .35f});
+            else
+                list.bordered_rect({chx, chy, w, 22}, 11, Color{1, 1, 1, .1f}, 1.0f, Color{1, 1, 1, .14f});
+            text(list, Face::lexend600, c.text, chx + 9, chy + 4, 11.0f,
+                 c.kind == 1 ? rgb(0x111111) : c.kind == 2 ? rgb(0xffd98a) : kInk, Align::left, .04f, 14.0f);
             chx += w + 6.0f;
         }
     }
@@ -2442,6 +2618,27 @@ void ShelfScreen::draw_details(GlCanvas &canvas, double now)
         y += 56.0f + 22.0f;
     }
 
+    // About this game (.d-sec, .d-desc.clamp): the overview, five lines
+    if (!g.info.overview.empty())
+    {
+        text(list, Face::lexend500, upper(tr("About this game")), px + 28, y, 11.0f,
+             Color{243 / 255.f, 245 / 255.f, 251 / 255.f, .42f}, Align::left, .16f, 14.0f);
+        y += 14.0f + 10.0f;
+        std::string flat = g.info.overview;
+        for (char &ch : flat)
+            if (ch == '\n')
+                ch = ' ';
+        auto desc = wrap_lines(Face::lexend500, flat, 13.0f, pw - 56.0f);
+        if (desc.size() > 5)
+            desc.resize(5), desc.back() += "\xe2\x80\xa6";
+        for (const auto &l : desc)
+        {
+            text(list, Face::lexend500, l, px + 28, y, 13.0f, Color{243 / 255.f, 245 / 255.f, 251 / 255.f, .82f}, Align::left,
+                 0.0f, 19.0f);
+            y += 19.0f;
+        }
+        y += 16.0f;
+    }
     // Game info (.d-sec, then the .d-grid boxes: two columns, the file path across both)
     text(list, Face::lexend500, upper(tr("Game info")), px + 28, y, 11.0f, Color{243 / 255.f, 245 / 255.f, 251 / 255.f, .42f},
          Align::left, .16f, 14.0f);
@@ -2449,8 +2646,12 @@ void ShelfScreen::draw_details(GlCanvas &canvas, double now)
     {
         const float gw = (pw - 56.0f - 8.0f) * .5f;
         int col = 0;
+        const std::string skip[] = {tr("Released"), tr("Genre"), tr("Players"), tr("Rating"), tr("Community score"),
+                                    tr("Format")};
         for (const auto &[k, v] : info_rows(*it))
         {
+            if (std::find(std::begin(skip), std::end(skip), k) != std::end(skip))
+                continue;
             const bool wide = k == tr("File");
             if (wide && col == 1)
                 col = 0, y += 52.0f + 8.0f;

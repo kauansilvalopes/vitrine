@@ -181,7 +181,8 @@ void LibraryLoader::work()
             ++covered;
         }
     }
-    // what is still missing: asked of the sources Boxshelf uses (libretro has no PS5 or apps)
+    // what LaunchBox said about each game (fetched earlier), then what is still missing
+    apply_info(games);
     jobs_ = art_jobs(games, false);
     hui::sys::log("[BOXSHELF] library: box art matched for %d of %zu games", covered, games.size());
     std::vector<Shelf> shelves;

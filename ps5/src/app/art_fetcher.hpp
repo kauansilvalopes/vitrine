@@ -4,7 +4,10 @@
 #pragma once
 
 #include "data/art_match.hpp"
+#include "app/launchbox.hpp"
 #include "data/scan.hpp"
+
+#include <map>
 
 #include <pthread.h>
 
@@ -18,6 +21,7 @@ struct ArtJob
 {
     std::string id, system, title, region, disc_id;
     bool front = true; // look for the front
+    bool info = false; // look up the game's info (LaunchBox)
     bool back = false; // look for the back (cut from GameTDB's full cover: GameCube, Wii, Switch, 3DS)
 };
 
@@ -34,6 +38,11 @@ bool back_source(std::string_view system_key);
 std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everything, bool backs = true);
 // Points games at the art already downloaded for them (fronts, and backs when they have none).
 void apply_downloaded_art(std::vector<data::Game> &games);
+// The games' info kept by the fetcher (storage_root()/info.tsv): applied to the games found there.
+std::string info_path();
+void apply_info(std::vector<data::Game> &games);
+// One game's info from the cache text (for updating the shelves when new info arrives): id -> info
+std::vector<std::pair<std::string, data::Game::Info>> read_info();
 
 class ArtFetcher
 {
@@ -57,10 +66,15 @@ class ArtFetcher
     void launch();
     std::vector<std::string> libretro_names(const std::string &system);
     bool gametdb_ready(const std::string &system); // loads (or downloads, weekly) the title database into tdb_
+    // LaunchBox: loads the platforms' caches, or reads them all from one streamed Metadata.zip (every 60 days)
+    bool launchbox_ready(const std::vector<std::string> &systems);
+    const data::LbGame *launchbox_game(const ArtJob &job);
 
     pthread_mutex_t lock_;
     std::vector<ArtJob> jobs_;
     std::vector<std::pair<std::string, std::vector<data::TdbGame>>> tdb_; // per system key
+    std::map<std::string, std::vector<data::LbGame>> lb_; // per system key
+    bool lb_tried_ = false;
     std::vector<std::pair<std::string, std::string>> done_;
     std::string status_;
     bool started_ = false, running_ = false, retry_misses_ = false;

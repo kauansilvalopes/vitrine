@@ -49,6 +49,13 @@ struct Game
     bool cover_square = false; // an icon, not box art: composed into the system's cover style
     std::string cover_fallback; // tried when cover_front cannot be read
     bool fallback_square = false; // the fallback is a square icon (cropped to fill), not box art
+    // What the LaunchBox Games Database says about it (app.js g.info): filled from the app's info cache
+    struct Info
+    {
+        bool known = false; // looked up (found or not)
+        std::string year, genres, developer, publisher, players, rating, esrb, overview;
+        bool coop = false;
+    } info;
 };
 
 // ---- rules ----

@@ -248,6 +248,7 @@ boxshelf::app::ShelfModel real_library(const std::string &dir)
             }
         index.add_boxshelf_covers(own);
     }
+    boxshelf::app::apply_info(games); // what the art fetcher learnt from LaunchBox ($BOXSHELF_DOWNLOAD0)
     for (auto &g : games)
     {
         index.resolve(g);

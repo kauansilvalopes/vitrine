@@ -34,6 +34,24 @@ std::size_t on_body(char *data, std::size_t size, std::size_t count, void *user)
     sink->body->append(data, n);
     return n;
 }
+struct Stream
+{
+    bool (*on_data)(void *, const char *, std::size_t);
+    void *user;
+    bool stopped = false;
+};
+
+std::size_t on_stream(char *data, std::size_t size, std::size_t count, void *user)
+{
+    auto *s = static_cast<Stream *>(user);
+    const std::size_t n = size * count;
+    if (!s->on_data(s->user, data, n))
+    {
+        s->stopped = true;
+        return 0;
+    }
+    return n;
+}
 } // namespace
 
 bool https_init()
@@ -85,6 +103,51 @@ bool https_get(const std::string &url, std::string &body, std::size_t max_bytes,
         if (error)
             *error = sink.overflow ? "too large" : result != CURLE_OK ? curl_easy_strerror(result) : "HTTP " + std::to_string(code);
         body.clear();
+        return false;
+    }
+    return true;
+}
+
+bool https_stream(const std::string &url, bool (*on_data)(void *, const char *, std::size_t), void *user, long *status,
+                  std::string *error, long timeout_ms, bool *stopped)
+{
+    if (status)
+        *status = 0;
+    if (stopped)
+        *stopped = false;
+    if (!https_init())
+        return false;
+    CURL *easy = curl_easy_init();
+    if (!easy)
+        return false;
+#ifndef BOXSHELF_HOST
+    console_curl_setup(easy);
+#endif
+    Stream s{on_data, user};
+    curl_easy_setopt(easy, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(easy, CURLOPT_PROTOCOLS_STR, "https");
+    curl_easy_setopt(easy, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(easy, CURLOPT_MAXREDIRS, 4L);
+    curl_easy_setopt(easy, CURLOPT_USERAGENT, "Vitrine-PS5/0.2");
+    curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT_MS, 8000L);
+    curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, timeout_ms);
+    curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, on_stream);
+    curl_easy_setopt(easy, CURLOPT_WRITEDATA, &s);
+    const CURLcode result = curl_easy_perform(easy);
+    long code = 0;
+    curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &code);
+    curl_easy_cleanup(easy);
+    if (status)
+        *status = code;
+    if (stopped)
+        *stopped = s.stopped;
+    if (s.stopped && code >= 200 && code < 300)
+        return true; // the caller had what it wanted
+    if (result != CURLE_OK || code < 200 || code >= 300)
+    {
+        if (error)
+            *error = result != CURLE_OK ? curl_easy_strerror(result) : "HTTP " + std::to_string(code);
         return false;
     }
     return true;

@@ -41,11 +41,12 @@ int main(int argc, char **argv)
         if ((!only.empty() && !only.count(sys)) || seen.count(id))
             continue;
         if (boxshelf::data::libretro_system(sys).empty() && boxshelf::data::gametdb_art(sys).empty() && sys != "gc" &&
-            sys != "wii")
+            sys != "wii" && boxshelf::data::launchbox_platform(sys).empty())
             continue;
         seen.insert(id);
         boxshelf::app::ArtJob job{id, sys, str("title"), str("region"), str("disc_id")};
-        job.back = boxshelf::app::back_source(sys);
+        job.back = boxshelf::app::back_source(sys) || !boxshelf::data::launchbox_platform(sys).empty();
+        job.info = !boxshelf::data::launchbox_platform(sys).empty();
         jobs.push_back(std::move(job));
     }
     cJSON_Delete(root);

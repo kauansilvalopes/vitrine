@@ -124,6 +124,60 @@ bool back_source(std::string_view key)
     return key == "gc" || key == "wii" || key == "sw" || key == "n3ds";
 }
 
+std::string info_path()
+{
+    return storage_root() + "/info.tsv";
+}
+
+std::vector<std::pair<std::string, data::Game::Info>> read_info()
+{
+    std::vector<std::pair<std::string, data::Game::Info>> out;
+    const std::string text = read_text(info_path());
+    std::size_t start = 0;
+    while (start < text.size())
+    {
+        auto nl = text.find('\n', start);
+        if (nl == std::string::npos)
+            nl = text.size();
+        const std::string line = text.substr(start, nl - start);
+        start = nl + 1;
+        std::vector<std::string> f;
+        std::size_t s = 0;
+        for (;;)
+        {
+            const auto t = line.find('\t', s);
+            f.push_back(line.substr(s, t == std::string::npos ? std::string::npos : t - s));
+            if (t == std::string::npos)
+                break;
+            s = t + 1;
+        }
+        if (f.size() < 11)
+            continue;
+        data::Game::Info in;
+        in.known = true;
+        in.year = f[1], in.genres = f[2], in.developer = f[3], in.publisher = f[4], in.players = f[5], in.rating = f[6];
+        in.esrb = f[7], in.coop = f[8] == "1";
+        for (std::size_t i = 0; i < f[9].size(); ++i)
+            if (f[9][i] == '\\' && i + 1 < f[9].size() && f[9][i + 1] == 'n')
+                in.overview += '\n', ++i;
+            else
+                in.overview += f[9][i];
+        out.emplace_back(f[0], std::move(in));
+    }
+    return out;
+}
+
+void apply_info(std::vector<data::Game> &games)
+{
+    const auto all = read_info();
+    std::map<std::string, const data::Game::Info *> by_id;
+    for (const auto &[id, in] : all)
+        by_id[id] = &in;
+    for (auto &g : games)
+        if (const auto it = by_id.find(g.id); it != by_id.end())
+            g.info = *it->second;
+}
+
 void apply_downloaded_art(std::vector<data::Game> &games)
 {
     for (auto &g : games)
@@ -156,11 +210,13 @@ std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everythi
     };
     for (const auto &g : games)
     {
-        // installed titles keep their store art (libretro and GameTDB have no PS5 boxes or apps)
-        if (g.path.rfind("/appdb/", 0) == 0)
-            continue;
         const std::string key(data::style(g.system).key);
-        const bool source = !data::libretro_system(key).empty() || !data::gametdb_art(key).empty() ||
+        const bool installed = g.path.rfind("/appdb/", 0) == 0;
+        const bool launchbox = !data::launchbox_platform(key).empty();
+        // installed apps and ports keep their store art; installed PS5 / PS4 games get their box from LaunchBox
+        if (installed && g.system != data::System::ps5 && g.system != data::System::ps4)
+            continue;
+        const bool source = launchbox || !data::libretro_system(key).empty() || !data::gametdb_art(key).empty() ||
                             g.system == data::System::gc || g.system == data::System::wii;
         if (!source)
             continue;
@@ -168,8 +224,9 @@ std::vector<ArtJob> art_jobs(const std::vector<data::Game> &games, bool everythi
         const bool own = g.cover_front.rfind("/data/boxshelf/covers/", 0) == 0;
         j.front = everything ? !own : !own && !exists(downloaded_cover_path(g.id));
         const bool back_here = !g.cover_back.empty() && g.cover_back != downloaded_back_path(g.id);
-        j.back = backs && back_source(key) && !back_here && (everything || !exists(downloaded_back_path(g.id)));
-        if (j.front || j.back)
+        j.back = backs && (back_source(key) || launchbox) && !back_here && (everything || !exists(downloaded_back_path(g.id)));
+        j.info = launchbox && (everything || !g.info.known);
+        if (j.front || j.back || j.info)
             jobs.push_back(std::move(j));
     }
     return jobs;
@@ -232,6 +289,79 @@ void ArtFetcher::launch()
     }
 }
 
+namespace
+{
+struct LbFeed
+{
+    data::LaunchBoxReader *reader;
+    bool ok = true;
+};
+bool lb_feed(void *user, const char *data, std::size_t size)
+{
+    auto *f = static_cast<LbFeed *>(user);
+    f->ok = f->reader->feed(data, size);
+    return f->ok && !f->reader->done(); // stop once Metadata.xml has been read (the rest of the zip isn't needed)
+}
+constexpr long kLaunchBoxDays = 60;
+} // namespace
+
+bool ArtFetcher::launchbox_ready(const std::vector<std::string> &systems)
+{
+    std::vector<std::string> missing;
+    for (const auto &k : systems)
+    {
+        if (lb_.count(k) || data::launchbox_platform(k).empty())
+            continue;
+        const std::string cache = storage_root() + "/launchbox-" + k + ".tsv";
+        if (fresh(cache, kLaunchBoxDays))
+        {
+            lb_[k] = data::lb_from_tsv(read_text(cache));
+            if (!lb_[k].empty())
+                continue;
+            lb_.erase(k);
+        }
+        missing.push_back(k);
+    }
+    if (missing.empty())
+        return true;
+    if (lb_tried_)
+        return false;
+    lb_tried_ = true;
+    // covers.js: the LaunchBox Games Database, read as it downloads (~110 MB, never kept)
+    std::vector<std::string> platforms;
+    for (const auto &k : missing)
+        platforms.emplace_back(data::launchbox_platform(k));
+    pthread_mutex_lock(&lock_);
+    status_ = "LaunchBox";
+    pthread_mutex_unlock(&lock_);
+    data::LaunchBoxReader reader(platforms);
+    LbFeed feed{&reader};
+    std::string error;
+    long status = 0;
+    const bool got = net::https_stream("https://gamesdb.launchbox-app.com/Metadata.zip", lb_feed, &feed, &status, &error,
+                                       900000);
+    if (!got || !feed.ok || !reader.done())
+    {
+        hui::sys::log("[BOXSHELF] art: LaunchBox read failed: %s", error.empty() ? "incomplete" : error.c_str());
+        return false;
+    }
+    auto read = reader.take();
+    for (const auto &k : missing)
+    {
+        auto &list = read[std::string(data::launchbox_platform(k))];
+        write_atomic(storage_root() + "/launchbox-" + k + ".tsv", data::lb_to_tsv(list));
+        hui::sys::log("[BOXSHELF] art: LaunchBox %s: %zu games", k.c_str(), list.size());
+        lb_[k] = std::move(list);
+    }
+    return true;
+}
+
+const data::LbGame *ArtFetcher::launchbox_game(const ArtJob &job)
+{
+    const auto it = lb_.find(job.system);
+    return it == lb_.end() ? nullptr : data::launchbox_match(it->second, job.title);
+}
+
 bool ArtFetcher::fetch_back(const ArtJob &job)
 {
     // GameTDB's full cover scan (back | spine | front), the back cut by the spine's folds (Boxshelf's cutBack). The
@@ -270,6 +400,23 @@ bool ArtFetcher::fetch_back(const ArtJob &job)
         done_.emplace_back(job.id + "|back", path);
         pthread_mutex_unlock(&lock_);
         return true;
+    }
+    // LaunchBox's Box - Back (English-only regions first, as covers.js does)
+    if (const data::LbGame *lb = launchbox_game(job); lb && !lb->back.empty())
+    {
+        std::string body, error, jpeg;
+        long status = 0;
+        if (net::https_get(data::launchbox_image_url(lb->back), body, 24u << 20, &status, &error, 60000) &&
+            art_shrink_to_jpeg(reinterpret_cast<const unsigned char *>(body.data()), body.size(), 1200, append_jpeg, &jpeg))
+        {
+            const std::string path = downloaded_back_path(job.id);
+            if (!write_atomic(path, jpeg))
+                return false;
+            pthread_mutex_lock(&lock_);
+            done_.emplace_back(job.id + "|back", path);
+            pthread_mutex_unlock(&lock_);
+            return true;
+        }
     }
     return false;
 }
@@ -405,7 +552,10 @@ bool ArtFetcher::fetch_one(const ArtJob &job, const std::vector<std::string> &na
         if (!hit.empty())
             urls.push_back(data::libretro_url(job.system, hit));
     }
-    // 2. GameTDB HD cover by disc id (GameCube / Wii)
+    // 2. LaunchBox's Box - Front (the only source with PS5 boxes)
+    if (const data::LbGame *lb = launchbox_game(job); lb && !lb->front.empty())
+        urls.push_back(data::launchbox_image_url(lb->front));
+    // 3. GameTDB HD cover by disc id (GameCube / Wii)
     if ((job.system == "gc" || job.system == "wii") && job.disc_id.size() == 6)
         for (const auto &r : tdb_regions(job.disc_id))
             urls.push_back("https://art.gametdb.com/wii/coverHQ/" + r + "/" + job.disc_id + ".png");
@@ -493,9 +643,61 @@ void ArtFetcher::work()
     net::https_init();
     std::map<std::string, std::vector<std::string>> lists;
     int found = 0, done = 0;
+    {
+        std::vector<std::string> systems;
+        for (const auto &j : jobs)
+            if (!data::launchbox_platform(j.system).empty() &&
+                std::find(systems.begin(), systems.end(), j.system) == systems.end())
+                systems.push_back(j.system);
+        if (!systems.empty())
+            launchbox_ready(systems);
+    }
+    // the info file, kept whole: what is there, plus what this run finds
+    std::map<std::string, std::string> info_lines;
+    {
+        const std::string text = read_text(info_path());
+        std::size_t start = 0;
+        while (start < text.size())
+        {
+            auto nl = text.find('\n', start);
+            if (nl == std::string::npos)
+                nl = text.size();
+            const std::string line = text.substr(start, nl - start);
+            if (const auto tab = line.find('\t'); tab != std::string::npos)
+                info_lines[line.substr(0, tab)] = line;
+            start = nl + 1;
+        }
+    }
+    bool info_changed = false;
+    auto clean = [](const std::string &v)
+    {
+        std::string o;
+        for (char c : v)
+            if (c == '\t')
+                o += ' ';
+            else if (c == '\n')
+                o += "\\n";
+            else if (c != '\r')
+                o += c;
+        return o;
+    };
     for (const auto &job : jobs)
     {
         ++done;
+        if (job.info && lb_.count(job.system))
+        {
+            // the game's info: found or not, it is written so the next start doesn't ask again
+            const data::LbGame *lb = launchbox_game(job);
+            std::string line = job.id;
+            const std::string fields[] = {lb ? lb->year : "",     lb ? lb->genres : "",  lb ? lb->developer : "",
+                                          lb ? lb->publisher : "", lb ? lb->players : "", lb ? lb->rating : "",
+                                          lb ? lb->esrb : "",     lb && lb->coop ? "1" : "0", lb ? lb->overview : "",
+                                          lb ? lb->id : ""};
+            for (const auto &f : fields)
+                line += "\t" + clean(f);
+            info_lines[job.id] = line;
+            info_changed = true;
+        }
         pthread_mutex_lock(&lock_);
         status_ = std::to_string(done) + " / " + std::to_string(jobs.size());
         pthread_mutex_unlock(&lock_);
@@ -507,8 +709,9 @@ void ArtFetcher::work()
         {
             if (fetch_back(job))
                 ++found;
-            else if (job.system == "gc" || job.system == "wii" || gametdb_ready(job.system))
-                misses[data::cover_key(job.id) + "-back"] = now;
+            else if (job.system == "gc" || job.system == "wii" || lb_.count(job.system) ||
+                     (!data::gametdb_art(job.system).empty() && gametdb_ready(job.system)))
+                misses[data::cover_key(job.id) + "-back"] = now; // only when a source answered
         }
         if (job.front && fetch_one(job, lists[job.system]))
             ++found;
@@ -521,7 +724,20 @@ void ArtFetcher::work()
             if (sources_up && tdb_up)
                 misses[data::cover_key(job.id)] = now;
         }
-        usleep(100000); // gentle with the free services
+        if (job.front || job.back)
+            usleep(100000); // gentle with the free services
+    }
+    if (info_changed)
+    {
+        std::string all;
+        for (const auto &[id, line] : info_lines)
+            all += line + "\n";
+        if (write_atomic(info_path(), all))
+        {
+            pthread_mutex_lock(&lock_);
+            done_.emplace_back("|info", info_path()); // the shelves take the new info
+            pthread_mutex_unlock(&lock_);
+        }
     }
     std::string text = kMissesHeader;
     for (const auto &[key, when] : misses)

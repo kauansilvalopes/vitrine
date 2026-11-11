@@ -144,6 +144,10 @@ class ShelfScreen
     void details_input(const hui::InputFrame &in, double now);
     void draw_details(GlCanvas &canvas, double now);
     std::vector<std::pair<std::string, std::string>> info_rows(const Item &item) const;
+    std::vector<std::pair<std::string, std::string>> info_facts(const data::Game &game) const;
+    // Menu → Sort / Filter: (value, label), built from what the library's info has
+    std::vector<std::pair<std::string, std::string>> sort_options() const;
+    std::vector<std::pair<std::string, std::string>> filter_options() const;
     float aside(double now) const; // how far the shelf has stepped aside, 0..1
     void update_covers(GlCanvas &canvas);
 

@@ -100,6 +100,14 @@ class ShelfModel
     void set_home(std::vector<Item> items);
     // Every game on the console shelves (not Home).
     std::vector<const Item *> all_games() const;
+    // Every copy of every game (Home's too), to update in place
+    template <class F> void for_each_game(F &&f)
+    {
+        for (auto &s : shelves_)
+            for (auto &it : s.items)
+                if (it.kind == ItemKind::game)
+                    f(it.game);
+    }
 
   private:
     std::vector<Shelf> shelves_;
