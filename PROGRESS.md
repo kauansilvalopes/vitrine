@@ -607,3 +607,11 @@ Owner: "manda para o meu ps5 a atualização". `tools/deploy.sh` now accepts the
 (it only accepted "Boxshelf"). /api/state showed no game running; `PS5_HOST=192.168.2.120 tools/deploy.sh` built and
 published 31 files to /data/homebrew/PPSA99850/ (eboot.bin and param.json last). settings.json and the caches in
 /download0 were not touched. Awaiting the owner's test on the console.
+
+## 2026-11-10 — release ps5-v0.4.0
+
+Owner: "sobe tudo". contentVersion 01.004.000; tests (data 232/0, shelf 73/0, list-library, preview smoke) and
+`make app` pass. Tag ps5-v0.4.0, release "Vitrine 0.4.0", Latest, `PPSA99850.zip` (PPSA99850/ at its root, 31 files),
+SHA-256 b817550dad0f7cd0d3fe742f536e5cddde15c68c1e14910692e2a839f2e4fd93. Contents: LaunchBox, play time, hiding
+games, Inspect rebuilt (case, disc, cartridge, UMD), launch screen, glass panels, titled made-up fronts, start-up
+splash and ripple. Verified on the PC; the same build was deployed to the console, owner's test pending.
