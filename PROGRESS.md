@@ -533,3 +533,11 @@ Owner: "do the remaining steps so the app is as good as Boxshelf". Local commits
 **Still missing for Boxshelf's level:** PS5 boxes (and PS1/PS2 backs) downloaded on the console from LaunchBox;
 game metadata (description, year, genre, players) for the richer Details and sorts; sounds (no audio layer yet);
 the Settings screen (Share).
+
+## 2026-11-10 — release ps5-v0.3.0
+
+Owner: "pode subir então nova versão". contentVersion 01.003.000; tests (data 232/0, shelf 68/0, list-library,
+preview smoke) and `make app` pass; dist says "Vitrine" / 01.003.000 with the Roman VI icon. Tag ps5-v0.3.0, release
+"Vitrine 0.3.0", Latest, `PPSA99850.zip` (PPSA99850/ at its root), SHA-256
+2be46f4e37f1623f8b1c57262570a0b209664433ae82f3c363b27deff6017571. Contents: Home + favourites + history, shuffle,
+sort / filter, Details, Inspect (the entry above). Verified on the PC only; not run on the console.
