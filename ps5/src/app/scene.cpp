@@ -219,6 +219,8 @@ std::vector<std::string> meta_for(const Item &it, data::System shelf)
 
 void ShelfScreen::set_library(ShelfModel model, double now)
 {
+    if (library_.empty() && !model.empty())
+        intro_wait_ = now, intro_at_ = 1e12; // app.js holdForCovers(), then revealShelf()
     library_ = std::move(model);
     model_ = library_;
     arrange(now);
@@ -1681,9 +1683,17 @@ void ShelfScreen::draw_cases(GlCanvas &canvas, double now)
         const bool is_sel = i == sel;
         const Look lk = look(i);
         const float L = lk.L, band_h = lk.band_h;
+        float rise = 0.0f;
+        if (now - intro_at_ < 1.7)
+        {
+            static const Bezier slot_in{.2f, .8f, .25f, 1.0f};
+            const float d = static_cast<float>(std::min(9, std::abs(i - sel))) * .07f;
+            const float e = slot_in(std::clamp((static_cast<float>(now - intro_at_) - d) / .75f, 0.0f, 1.0f));
+            alpha *= e, rise = 28.0f * (1.0f - e);
+        }
         CaseOp op;
         op.x = kTrackX + x;
-        op.y = kTrackY;
+        op.y = kTrackY + rise;
         op.z = z;
         op.width = lk.w;
         op.height = lk.h;
@@ -2925,6 +2935,34 @@ void ShelfScreen::draw_details(GlCanvas &canvas, double now)
     list.pop_clip();
 }
 
+// index.html #splash: the wordmark (Lexend 800, .34em apart, rgba(214,220,255,.84)) with a short line under it, on the
+// backdrop; t 0..1 is #splash.out (opacity 0, scale 1.035). While the library is read, what is being read shows
+// small under it.
+void ShelfScreen::draw_splash(DrawList &list, float t)
+{
+    const float o = 1.0f - t;
+    if (o <= 0.0f)
+        return;
+    if (t > 0.0f)
+        list.rounded_rect({0, 0, W, H}, 0, Color{0, 0, 0, .35f * o}); // over the cases rippling in
+    list.push_opacity(o);
+    list.push_transform(1.0f + .035f * t, W * .5f, H * .5f, 0.0f, 0.0f);
+    const float fs = 70.0f, cy = H * .5f - 10.4f;
+    // letter-spacing .34em with padding-left .34em: the word stays centred
+    text(list, Face::lexend800, "VITRINE", W * .5f + fs * .17f, cy - fs * .5f, fs, Color{214 / 255.f, 220 / 255.f, 1.0f, .84f},
+         Align::center, .34f, fs);
+    const float ly = cy + fs * .78f;
+    list.linear_gradient({W * .5f - 25.0f, ly, 25.0f, 2.0f}, 90.0f, Color{170 / 255.f, 186 / 255.f, 1.0f, 0.0f},
+                         Color{170 / 255.f, 186 / 255.f, 1.0f, .75f});
+    list.linear_gradient({W * .5f, ly, 25.0f, 2.0f}, 90.0f, Color{170 / 255.f, 186 / 255.f, 1.0f, .75f},
+                         Color{170 / 255.f, 186 / 255.f, 1.0f, 0.0f});
+    if (t <= 0.0f && !status_.empty())
+        text(list, Face::lexend500, upper(tr(status_.c_str())), W * .5f, ly + 40.0f, 11.0f, kInkDim, Align::center, .24f,
+             14.0f);
+    list.pop_transform();
+    list.pop_opacity();
+}
+
 void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
 {
     if (!model_.empty() && shown_shelf_ != model_.current())
@@ -2932,17 +2970,27 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
     draw_backdrop(canvas.list(), now);
     if (model_.empty())
     {
-        draw_empty(canvas.list());
+        if (!status_.empty() && library_.empty())
+            draw_splash(canvas.list(), 0.0f); // the library is being read
+        else
+            draw_empty(canvas.list());
         draw_top_bar(canvas.list(), now, clock);
         return;
     }
     const float away = aside(now), dx = -.17f * W * away;
     // the floor and the .sel-halo go with #scene: translate(-17vw) scale(.92) about the middle
     canvas.list().push_transform(1.0f - .08f * away, W * .5f, H * .5f, dx, 0.0f);
+    canvas.list().push_opacity(std::clamp(static_cast<float>(now - intro_at_) / .75f, 0.0f, 1.0f)); // #scene, revealed
     draw_floor_and_halo(canvas.list(), now);
+    canvas.list().pop_opacity();
     canvas.list().pop_transform();
     draw_cases(canvas, now);
+    if (intro_wait_ >= 0.0 && (covers_pending() == 0 || now - intro_wait_ > 1.5))
+        intro_at_ = now, intro_wait_ = -1.0;
     auto &hud = canvas.list();
+    // #app.intro-ripple .hud-top, #info, #hints: hudIn .6 s ease-out after .38 s
+    const float hud_in = std::clamp((static_cast<float>(now - intro_at_) - .38f) / .6f, 0.0f, 1.0f);
+    hud.push_opacity(hud_in);
     // .info: translateX(-17vw), opacity 0; the hint bar hands over to the panel
     hud.push_opacity((1.0f - away) * (1.0f - isp_in_.at(now))); // the case in your hands covers the title strip
     hud.push_transform(1.0f, 0.0f, 0.0f, dx, 0.0f);
@@ -2957,6 +3005,9 @@ void ShelfScreen::draw(GlCanvas &canvas, double now, const Clock &clock)
         draw_hints(hud);
         hud.pop_opacity();
     }
+    hud.pop_opacity();
+    if (now - intro_at_ < .9)
+        draw_splash(hud, std::max(0.0f, static_cast<float>(now - intro_at_) / .9f));
     draw_details(canvas, now);
     draw_menu(canvas, now);
     draw_launch(canvas, now);

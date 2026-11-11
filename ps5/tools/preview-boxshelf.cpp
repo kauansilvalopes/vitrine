@@ -347,6 +347,20 @@ int main(int argc, char **argv)
         host.render(screen, 5.0);
         return host.write_ppm(argv[1]) ? 0 : 3;
     }
+    if (mode.rfind("intro-", 0) == 0)
+    {
+        // intro-<ms>: the real library arriving after the splash, caught <ms> into the ripple (app.js revealShelf)
+        screen.set_status("Looking through your game folders");
+        host.render(screen, 4.0);
+        screen.set_library(real_library(".local/listings"), 5.0);
+        for (int frame = 0; frame < 120 && (frame < 3 || screen.covers_pending() > 0); ++frame)
+        {
+            host.render(screen, 5.0);
+            usleep(16000);
+        }
+        host.render(screen, 5.0 + std::atof(mode.c_str() + 6) / 1000.0);
+        return host.write_ppm(argv[1]) ? 0 : 3;
+    }
     if (mode == "video")
     {
         // A scripted tour of the demo shelves at 60 fps, piped to ffmpeg: argv[1] is the .mp4. Every frame waits

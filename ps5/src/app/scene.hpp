@@ -193,6 +193,10 @@ class ShelfScreen
     // Cross: Play. The launch runs on its own thread; its messages show in .toast (style.css).
     Launcher launcher_;
     PlayClock play_clock_;
+    // app.js revealShelf(): the splash fades out (.9 s) and the cases ripple in from the chosen one (#app.intro-ripple)
+    double intro_at_ = -10.0;
+    double intro_wait_ = -1.0; // the library came: the splash stays until the covers in view are ready (<= 1.5 s)
+    void draw_splash(hui::gfx::DrawList &list, float t);
     std::string starting_app_;
     void end_session(double now);
     unsigned launch_serial_ = 0;
